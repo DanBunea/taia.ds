@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "name": "taia-ds-e2e",
+  "devDependencies": {
+    "@playwright/test": "1.58.2"
+  },
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui"
+  }
+}

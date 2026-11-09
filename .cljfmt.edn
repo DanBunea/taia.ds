@@ -1,1 +1,1 @@
-{:paths ["components" "development" "build.clj"]}
+{:paths ["components" "development" "scripts" "build.clj"]}

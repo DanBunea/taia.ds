@@ -55,9 +55,28 @@ Call it with a hand-made ctx and parse the result with hickory. Two traps:
 ## What needs a browser
 
 Datastar itself: `data-bind` writing into the store, morph behaviour, `data-init` firing, the SSE
-stream and the reconnect watchdog. Cover those with an end-to-end suite against a real page
-(Playwright or etaoin) and **watch the browser console**: a thrown Datastar expression aborts the
-attribute pass for the whole patched subtree without any server-side symptom.
+stream and the reconnect watchdog. Cover those with an end-to-end suite against a real page and
+**watch the browser console**: a thrown Datastar expression aborts the attribute pass for the whole
+patched subtree without any server-side symptom.
+
+### End-to-end (Playwright)
+
+```shell
+bb e2e-test                 # all specs; needs Node >= 18
+bb e2e-test counter         # one spec file
+bb e2e-test --headed
+```
+
+`scripts/e2e.clj` installs `e2e/` deps, starts the examples app on port 7799 in its own JVM, runs
+`npx playwright test` with `E2E_BASE_URL` set, and stops the JVM (log in
+`e2e/test-results/server.log`). Against an already running `bb dev`:
+`E2E_BASE_URL=http://localhost:7788 npx playwright test` from `e2e/`.
+
+One spec per example in [`e2e/tests/`](../e2e/tests/). Every spec installs
+[`console-guard.ts`](../e2e/tests/helpers/console-guard.ts), which fails the test on any
+`pageerror` or `console.error` (network aborts on navigation are ignored) — the only reliable
+detector of an aborted attribute pass. `live-counter.spec.ts` opens two browser contexts as two
+users and asserts a click in one is pushed into the other over SSE.
 
 ## Conventions used in this repository
 

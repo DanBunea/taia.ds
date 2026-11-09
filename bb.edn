@@ -12,6 +12,8 @@
                 :task (shell "cljfmt fix")}
   format:check {:doc "Check formatting"
                 :task (shell "cljfmt check")}
+  e2e-test     {:doc "Playwright end-to-end suite against the examples app. Usage: bb e2e-test [spec] [--headed]; needs Node >= 18"
+                :task (load-file "scripts/e2e.clj")}
   api-index    {:doc "Regenerate docs/api.md from the brick interface namespaces"
                 :task (load-file "scripts/api_index.clj")}
   jar          {:doc "Build target/taia.ds-<version>.jar (pass :version \"x.y.z\" to override)"

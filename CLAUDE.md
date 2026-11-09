@@ -6,6 +6,7 @@ Polylith library: server-side UI components over Datastar SSE. Published as `io.
 
 ```shell
 bb test          # unit tests: Kaocha + RCF inline tests (clojure -M:dev:test)
+bb e2e-test      # Playwright suite vs the examples app on :7799 (scripts/e2e.clj; Node >= 18 via nvm); bb e2e-test <spec> [--headed]
 bb check         # poly check (workspace validation)
 bb info          # poly info
 bb dev           # examples app on http://localhost:7788, nREPL on 7789
@@ -22,6 +23,7 @@ bb deploy        # jar + deploy to Clojars (CLOJARS_USERNAME / CLOJARS_PASSWORD)
 - `projects/taia-ds/` — the published library (all four bricks). `workspace.edn` marks `datastar` as `:necessary` there (it is the top of the dependency tree). `projects/examples/` — bricks + the `examples` base; runnable, never published.
 - `bases/examples/` — `core.clj` (the reference Ring/reitit/Jetty wiring: async Jetty, both handler arities, `wrap-resource "datastar"` + `wrap-content-type`, a `?user=` stand-in for auth), `layout.clj` (registry + page shell), `components/<group>/<name>.clj` + `<name>_controller.clj` (five examples, one concept each), `test/` (`test_support.clj` drives the pipeline in process; `examples_test.clj` is the executable spec every `docs/examples/*.md` article points at). A new example = component pair + registry entry + article + test block.
 - `development/src/dev.clj` — starts the examples app and an nREPL on 7789 (Clojure MCP `clojure_eval` with `port 7789` reaches the running server, e.g. `send-ui!`).
+- `e2e/` — Playwright specs, one per example, all under `tests/helpers/console-guard.ts` (fails on any console error: the only detector of a Datastar attribute-pass abort). `live-counter.spec.ts` uses two browser contexts for the SSE fan-out. A new example gets a spec here too.
 - `docs/` — cljdoc articles (`doc/cljdoc.edn` is the tree). `docs/gotchas.md` is the distilled production knowledge: add to it when a bug teaches something about the framework. `docs/api.md` is generated.
 - `build.clj` — tools.build; inlines bricks, writes a Maven-only pom, refuses to build if a `poly/*` dep leaks into the pom.
 

@@ -121,6 +121,7 @@ This is a [Polylith](https://polylith.gitbook.io/) workspace.
 
 ```shell
 bb test          # Kaocha + RCF inline tests (clojure -M:dev:test)
+bb e2e-test      # Playwright against the examples app (needs Node >= 18); bb e2e-test <spec> [--headed]
 bb check         # poly check
 bb info          # poly info
 bb dev           # examples app: http://localhost:7788/ (nREPL on 7789)
