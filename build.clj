@@ -10,8 +10,8 @@
    [clojure.tools.build.api :as b]
    [deps-deploy.deps-deploy :as dd]))
 
-(def lib 'io.gitlab.danbunea/taia.ds)
-(def scm-url "https://gitlab.com/danbunea/taia.ds")
+(def lib 'io.github.danbunea/taia.ds)
+(def scm-url "https://github.com/DanBunea/taia.ds")
 (def project-deps "projects/taia-ds/deps.edn")
 (def class-dir "target/classes")
 
@@ -54,7 +54,7 @@
                   :basis (maven-only-basis basis)
                   :scm {:url scm-url
                         :connection (str "scm:git:" scm-url ".git")
-                        :developerConnection "scm:git:ssh://git@gitlab.com/danbunea/taia.ds.git"
+                        :developerConnection "scm:git:git@github.com:DanBunea/taia.ds.git"
                         :tag (str "v" v)}
                   :pom-data [[:description "Server-side UI component framework over Datastar SSE (hierarchical state machines, discovery by naming convention, async push)."]
                              [:url scm-url]

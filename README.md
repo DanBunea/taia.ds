@@ -18,7 +18,7 @@ the HTML back in:
 re-renders the GIF from it.)
 
 ```clojure
-io.gitlab.danbunea/taia.ds {:mvn/version "0.1.x"}
+io.github.danbunea/taia.ds {:mvn/version "0.1.x"}
 ```
 
 ## What is in the jar
@@ -147,7 +147,7 @@ published. `build.clj` inlines the bricks into one jar whose pom lists Maven lib
 
 ### Publishing
 
-1. Verify the `io.gitlab.danbunea` group once on Clojars: create a public GitLab repository named
+1. Verify the `io.github.danbunea` group once on Clojars: create a public GitHub repository named
    `clojars-danbunea` (see [Verified Group Names](https://github.com/clojars/clojars-web/wiki/Verified-Group-Names)).
 2. Create a Clojars deploy token and export `CLOJARS_USERNAME` and `CLOJARS_PASSWORD` (the token).
 3. `bb deploy` (optionally `bb deploy :version '"0.2.0"'`), then tag `v<version>`.

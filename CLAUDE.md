@@ -1,6 +1,6 @@
 # CLAUDE.md — taia.ds
 
-Polylith library: server-side UI components over Datastar SSE. Published as `io.gitlab.danbunea/taia.ds`.
+Polylith library: server-side UI components over Datastar SSE. Published as `io.github.danbunea/taia.ds`.
 
 ## Commands
 

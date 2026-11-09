@@ -98,7 +98,7 @@
         [:p.muted summary]
         (mount example user)
         [:p.muted "Component " [:code component] " · signed in as " [:code user]
-         (when doc [:span " · " [:a {:href (str "https://gitlab.com/danbunea/taia.ds/-/blob/main/docs/examples/" doc)} "read the walkthrough"]])]))
+         (when doc [:span " · " [:a {:href (str "https://github.com/DanBunea/taia.ds/blob/main/docs/examples/" doc)} "read the walkthrough"]])]))
 
 (defn not-found [slug]
   (page "Not found" [:h1 "No such example"] [:p.muted (str "'" slug "' is not one of: " (str/join ", " (map :slug examples)))]))

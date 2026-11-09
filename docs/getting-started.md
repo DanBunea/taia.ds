@@ -8,7 +8,7 @@ components keep an SSE stream open so the server can push.
 ## 1. Add the dependency
 
 ```clojure
-io.gitlab.danbunea/taia.ds {:mvn/version "0.1.x"}
+io.github.danbunea/taia.ds {:mvn/version "0.1.x"}
 ```
 
 The jar brings its own `datastar.js` (v1.0.0-RC.8) and `sse-reconnect.js` as classpath resources.
