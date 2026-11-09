@@ -1,10 +1,13 @@
 (ns taia.ds.datastar.adapters.components.counter.connected-counter
-  "Counter component for testing the dynamic component endpoint mechanism."
+  "Connected counter example: the page opens an SSE stream to this component
+   (/ds/nds-connect/.../init) and the initial render arrives as a :patch over
+   that stream; clicks post one-shot events to /ds/nds/... as usual. The open
+   stream is what `send-ui!` pushes to — see the `comment` block in `dev`."
   (:require
    [taia.ds.datastar.adapters.handlers.context :as c]))
 
 (defn connected-counter [{:keys [component-id] :as ctx}]
-  [[:broadcast
+  [[:patch
     [:div.counter-container
      {:id component-id
       :data-signals (c/ctx->data-signals ctx)}

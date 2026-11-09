@@ -3,7 +3,7 @@
   dev          {:doc "Start the example dev server on http://localhost:7788 (counter pages)"
                 :task (clojure "-M:dev -m dev")}
   test         {:doc "Run the unit tests (Kaocha + RCF inline tests)"
-                :task (clojure "-M:test")}
+                :task (clojure "-M:dev:test")}
   check        {:doc "Validate the Polylith workspace"
                 :task (clojure "-M:poly check")}
   info         {:doc "Show the Polylith workspace"

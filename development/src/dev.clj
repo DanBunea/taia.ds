@@ -11,12 +11,14 @@
    :logged-user with a :user/id, the static assets, and an async Jetty."
   (:require
    [hyperfiddle.rcf]
+   [nrepl.server :as nrepl]
    [muuntaja.core :as m]
    [reitit.coercion.malli :as malli]
    [reitit.ring :as reitit]
    [reitit.ring.coercion :as rrc]
    [reitit.ring.middleware.muuntaja :as rrmm]
    [ring.adapter.jetty :as jetty]
+   [ring.middleware.content-type :refer [wrap-content-type]]
    [ring.middleware.keyword-params :refer [wrap-keyword-params]]
    [ring.middleware.params :refer [wrap-params]]
    [ring.middleware.resource :refer [wrap-resource]]
@@ -24,6 +26,7 @@
    [taia.ds.datastar.interface :as ds]))
 
 (def port 7788)
+(def nrepl-port 7789)
 
 (defn- wrap-logged-user
   "Stand-in for an application's auth middleware: the handlers key SSE
@@ -36,9 +39,15 @@
 (defn- page-handler
   "Serves a component's full-page INIT render at a canonical URL."
   [component-name component-id]
-  (fn [req]
-    (let [{:keys [html]} (ds/process-component-event req component-name component-id "INIT" nil)]
-      (->html html))))
+  (let [render (fn [req]
+                 (let [{:keys [html]} (ds/process-component-event req component-name component-id "INIT" nil)]
+                   (->html html)))]
+    ;; async Jetty calls the 3-arity; a sync-only handler would hang the request
+    (fn
+      ([req] (render req))
+      ([req respond raise]
+       (try (respond (render req))
+            (catch Throwable t (raise t)))))))
 
 (def path-params
   {:component :string :component-id :string :event :string})
@@ -71,26 +80,34 @@
       wrap-logged-user
       wrap-keyword-params
       wrap-params
-      (wrap-resource "datastar")))
+      (wrap-resource "datastar")
+      ;; module scripts need a real MIME type, wrap-resource alone sends none
+      wrap-content-type))
 
 (defonce !server (atom nil))
+(defonce !nrepl (atom nil))
 
 (defn stop! []
   (when-let [s @!server]
     (.stop s)
-    (reset! !server nil)))
+    (reset! !server nil))
+  (when-let [n @!nrepl]
+    (nrepl/stop-server n)
+    (reset! !nrepl nil)))
 
 (defn start! []
   (stop!)
   (hyperfiddle.rcf/enable!)
   (ds/set-component-search-paths! ["taia.ds.datastar.adapters.components"])
   (reset! !server (jetty/run-jetty (app) {:port port :join? false :async? true}))
-  (println (str "taia.ds dev server on http://localhost:" port "/  (and /connected)"))
+  (reset! !nrepl (nrepl/start-server :port nrepl-port))
+  (spit ".nrepl-port" nrepl-port)
+  (println (str "taia.ds dev server on http://localhost:" port "/  (and /connected); nREPL on " nrepl-port))
   @!server)
 
 (comment
   ;; push a server-initiated patch to the connected counter page
-  (ds/send-ui! "cc1" "dev" [[:patch [:div#cc1 "pushed from the REPL"]]]))
+  (ds/send-ui! "cc1" "dev" [[:patch [:div#cc1 "pushed from the REPL"] {:d*/selector "#cc1"}]]))
 
 (defn -main [& _]
   (start!)

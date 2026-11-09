@@ -21,7 +21,11 @@
 
 (defn- jar-file [v] (format "target/%s-%s.jar" (name lib) v))
 
-(defn- basis [] (b/create-basis {:project project-deps}))
+(defn- basis
+  "Basis of the library project; :local/root bricks resolve relative to it."
+  []
+  (b/with-project-root "projects/taia-ds"
+    (b/create-basis {:project "deps.edn"})))
 
 (defn- brick-paths
   "Source/resource dirs of every :local/root brick the project depends on."
@@ -31,7 +35,10 @@
 (defn- maven-only-basis
   "The pom must list Maven libraries only; local bricks are inlined in the jar."
   [basis]
-  (update basis :deps #(into {} (remove (comp :local/root val)) %)))
+  (let [maven? (comp not :local/root val)]
+    (-> basis
+        (update :deps #(into {} (filter maven?) %))
+        (update :libs #(into {} (filter maven?) %)))))
 
 (defn clean [_] (b/delete {:path "target"}))
 
@@ -45,7 +52,6 @@
                   :lib lib
                   :version v
                   :basis (maven-only-basis basis)
-                  :src-dirs paths
                   :scm {:url scm-url
                         :connection (str "scm:git:" scm-url ".git")
                         :developerConnection "scm:git:ssh://git@gitlab.com/danbunea/taia.ds.git"
