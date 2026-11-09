@@ -26,7 +26,12 @@ test('todomvc: Enter adds, checkboxes toggle via query params, filters hide', as
   await expect(page.getByTestId('todo-1')).toHaveCount(0);
   await expect(page.getByTestId('todo-2')).toBeVisible();
 
+  await page.getByTestId('filter-completed').click();
+  await expect(page.getByTestId('todo-1')).toBeVisible();
+  await expect(page.getByTestId('todo-2')).toHaveCount(0);
+
   await page.getByTestId('filter-all').click();
+  await expect(page.getByTestId('todo-2')).toBeVisible();
   await page.getByTestId('clear-completed').click();
   await expect(page.getByTestId('todo-1')).toHaveCount(0);
   await expect(page.getByTestId('remaining')).toHaveText('1 item left');

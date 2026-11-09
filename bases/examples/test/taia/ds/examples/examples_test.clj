@@ -127,6 +127,10 @@
  (get-in t4 [:memory :filter]) := "active"
  (testid-text (:html t4) "todo-1") := nil
  (some? (testid-text (:html t4) "todo-2")) := true
+ (def t4c (step "todomvc.todomvc" "todos1" t3 "filter" {:filter "completed"}))
+ (get-in t4c [:memory :filter]) := "completed"
+ (some? (testid-text (:html t4c) "todo-1")) := true
+ (testid-text (:html t4c) "todo-2") := nil
  (get-in (step "todomvc.todomvc" "todos1" t4 "filter" {:filter "bogus"}) [:memory :filter]) := "all"
  (mapv :id (get-in (step "todomvc.todomvc" "todos1" t3 "destroy" {:id "2"}) [:memory :todos])) := [1]
  (mapv :completed (get-in (step "todomvc.todomvc" "todos1" t3 "toggle_all") [:memory :todos])) := [true true]

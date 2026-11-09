@@ -18,8 +18,11 @@
   ([cid event] (post cid event nil))
   ([cid event query] (str "@post('/ds/nds/todomvc.todomvc/" cid "/" event (when query (str "?" query)) "')")))
 
-(defn visible-todos [todos filter]
-  (case filter
+(defn visible-todos
+  "The todos the current filter shows. (The parameter is not called `filter`:
+   that would shadow clojure.core/filter inside this very function.)"
+  [todos current-filter]
+  (case current-filter
     "active"    (remove :completed todos)
     "completed" (filter :completed todos)
     todos))
@@ -44,7 +47,8 @@
        "data-on:click" (post cid "filter" (str "filter=" f))} label])
 
 (defn todomvc [{:keys [component-id memory] :as ctx}]
-  (let [{:keys [todos filter editingId]} memory
+  (let [{:keys [todos editingId]} memory
+        current-filter (or (:filter memory) "all")
         todos     (or todos [])
         remaining (count (remove :completed todos))
         completed (- (count todos) remaining)]
@@ -58,15 +62,15 @@
                "data-bind" (str component-id ".newTodo")
                "data-on:keydown" (str "evt.key==='Enter' && " (post component-id "add"))}]]
      (into [:ul.todos]
-           (for [t (visible-todos todos (or filter "all"))]
+           (for [t (visible-todos todos current-filter)]
              (todo-row component-id t (= (:id t) editingId))))
      (when (seq todos)
        [:div.row {:style {:justify-content "space-between" :margin-top ".75rem"}}
         [:span.muted {:data-testid "remaining"} (str remaining (if (= 1 remaining) " item left" " items left"))]
         [:span.filters
-         (filter-link component-id filter "all" "All")
-         (filter-link component-id filter "active" "Active")
-         (filter-link component-id filter "completed" "Completed")]
+         (filter-link component-id current-filter "all" "All")
+         (filter-link component-id current-filter "active" "Active")
+         (filter-link component-id current-filter "completed" "Completed")]
         (when (pos? completed)
           [:button.secondary {:type "button" :data-testid "clear-completed"
                               "data-on:click" (post component-id "clear_completed")} "Clear completed"])])]))
