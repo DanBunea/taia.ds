@@ -18,7 +18,7 @@ the HTML back in:
 re-renders the GIF from it.)
 
 ```clojure
-io.github.danbunea/taia.ds {:mvn/version "0.1.x"}
+io.github.danbunea/taia.ds {:mvn/version "0.1.0"}
 ```
 
 ## What is in the jar

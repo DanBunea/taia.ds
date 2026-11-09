@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.x — 2026-11-09
+## 0.1.0 — 2026-11-09
 
 - Extracted from `tbc.polylith` (commit `6e93fd4a`) as a standalone Polylith workspace.
 - Bricks: `datastar`, `state-machines`, `logging`, `extensions`, renamed under `taia.ds.*`.
