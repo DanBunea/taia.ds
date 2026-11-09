@@ -3,7 +3,10 @@
 `basics.counter` — [`counter.clj`](../../bases/examples/src/taia/ds/examples/components/basics/counter.clj),
 [`counter_controller.clj`](../../bases/examples/src/taia/ds/examples/components/basics/counter_controller.clj).
 
-The smallest complete component: a render fn and a one-state machine.
+The smallest complete component: a render fn and a one-state machine. The README animation walks
+one click of this very component through the pipeline.
+
+![One event, end to end](../img/counter-flow.gif)
 
 **What to look at**
 

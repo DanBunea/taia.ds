@@ -8,6 +8,15 @@ can push UI with `send-ui!`.
 
 Extracted from the `tbc.polylith` application, where it drives the whole product UI.
 
+One click on the counter example, end to end — the signal store travels with the POST, the
+controller's action produces the new ctx, the render fn turns it into hiccup, and Datastar morphs
+the HTML back in:
+
+![One event, end to end: click, POST with the signal store, ctx, state-machine action, render, HTML, morph](docs/img/counter-flow.gif)
+
+(The source is [`docs/img/counter-flow.svg`](docs/img/counter-flow.svg), an animated SVG; `bb flow-gif`
+re-renders the GIF from it.)
+
 ```clojure
 io.gitlab.danbunea/taia.ds {:mvn/version "0.1.x"}
 ```

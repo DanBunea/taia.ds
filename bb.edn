@@ -14,6 +14,8 @@
                 :task (shell "cljfmt check")}
   e2e-test     {:doc "Playwright end-to-end suite against the examples app. Usage: bb e2e-test [spec] [--headed]; needs Node >= 18"
                 :task (load-file "scripts/e2e.clj")}
+  flow-gif     {:doc "Re-render docs/img/counter-flow.gif from the animated SVG (needs e2e deps: npm ci in e2e/)"
+                :task (shell {:dir "e2e"} "node render-flow.mjs ../docs/img/counter-flow.svg ../docs/img/counter-flow.gif 10 13")}
   api-index    {:doc "Regenerate docs/api.md from the brick interface namespaces"
                 :task (load-file "scripts/api_index.clj")}
   jar          {:doc "Build target/taia.ds-<version>.jar (pass :version \"x.y.z\" to override)"
