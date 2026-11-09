@@ -27,6 +27,8 @@
  (def c2 (step "basics.counter" "counter1" c1 "increment"))
  (:count (:memory c2)) := 2
  (testid-text (:html c2) "count") := "2"
+ ;; the state viewer under every example prints exactly what round-trips
+ (str/includes? (testid-text (:html c2) "inspect") "{:state :displayed, :memory {:count 2}}") := true
  (:count (:memory (step "basics.counter" "counter1" c2 "decrement"))) := 1
  (:count (:memory (step "basics.counter" "counter1" c2 "reset"))) := 0
 

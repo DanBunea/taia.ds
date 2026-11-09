@@ -15,6 +15,7 @@
      event name is upper-cased into the machine's keyword (`increment` →
      `:INCREMENT`)."
   (:require
+   [taia.ds.examples.inspect :as inspect]
    [taia.ds.datastar.interface :as ds]))
 
 (defn- post [cid event]
@@ -30,4 +31,5 @@
     [:button {:type "button" :data-testid "inc" "data-on:click" (post component-id "increment")} "+"]
     [:button.secondary {:type "button" "data-on:click" (post component-id "reset")} "Reset"]]
    [:p.muted "The count lives in " [:code ":memory"] ", round-tripped through the "
-    [:code "data-signals"] " attribute above. Reload the page: it is gone — one-shot components own no server state."]])
+    [:code "data-signals"] " attribute above. Reload the page: it is gone — one-shot components own no server state."]
+   (inspect/state-pre ctx)])

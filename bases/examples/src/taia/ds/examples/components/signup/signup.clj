@@ -12,6 +12,7 @@
    `:execute-script` that focuses the first invalid field. Any render may
    return either shape."
   (:require
+   [taia.ds.examples.inspect :as inspect]
    [taia.ds.datastar.interface :as ds]))
 
 (def fields
@@ -36,13 +37,15 @@
    (map #(field component-id (:errors memory) %) fields)
    [:div.row {:style {:margin-top "1rem"}}
     [:button {:type "button" :data-testid "submit" "data-on:click" (post component-id "submit")} "Create account"]]
-   [:p.muted "Type, then submit. Nothing is sent while you type: the fields are signals, read on the server when the event fires."]])
+   [:p.muted "Type, then submit. Nothing is sent while you type: the fields are signals, read on the server when the event fires."]
+   (inspect/state-pre ctx)])
 
 (defn- success [{:keys [component-id memory] :as ctx}]
   [:div.card {:id component-id :data-signals (ds/ctx->data-signals ctx)}
    [:h2.ok {:data-testid "welcome"} (str "Welcome, " (:name memory) "!")]
    [:p (str "We would email " (:email memory) " if this were real.")]
-   [:button.secondary {:type "button" "data-on:click" (post component-id "reset")} "Start over"]])
+   [:button.secondary {:type "button" "data-on:click" (post component-id "reset")} "Start over"]
+   (inspect/state-pre ctx)])
 
 (defn- first-invalid [memory]
   (some (fn [[k]] (when (get-in memory [:errors k]) k)) fields))

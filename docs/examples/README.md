@@ -6,7 +6,9 @@ Six components, one concept each, in `bases/examples/src/taia/ds/examples/compon
 bb dev          # http://localhost:7788/
 ```
 
-Every example has an article here and an executable spec in
+Every example page ends with a live view of the component's `:state` and `:memory` — exactly what
+round-trips through the signal store, refreshed on every event. Every example has an article here
+and an executable spec in
 [`examples_test.clj`](../../bases/examples/test/taia/ds/examples/examples_test.clj).
 
 | | Shows | Component |

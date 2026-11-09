@@ -51,6 +51,7 @@
    ul.todos li.completed .text{text-decoration:line-through;color:#9ca3af}ul.todos li .text{flex:1;cursor:pointer}
    .filters a{margin-right:.5rem;cursor:pointer;color:#2563eb}.filters a.selected{font-weight:700;text-decoration:underline}
    pre{background:#f3f4f6;padding:.75rem;border-radius:8px;overflow:auto;font-size:.85rem}
+   details.inspect{margin-top:1rem;border-top:1px dashed #d1d5db;padding-top:.5rem}details.inspect summary{cursor:pointer;font-size:.8rem}details.inspect pre{margin:.5rem 0 0;font-size:.8rem}
    .index li{margin:.75rem 0}.index a{font-weight:600}")
 
 (defn page

@@ -12,6 +12,7 @@
    the error path. RESET is declared at machine level (`:on`), so it works
    from any state."
   (:require
+   [taia.ds.examples.inspect :as inspect]
    [taia.ds.datastar.interface :as ds]))
 
 (defn- post [cid event]
@@ -71,4 +72,5 @@
        :review  (review component-id memory)
        :done    (done component-id memory)
        [:p.muted (str "state: " (pr-str state))])
-     [:p.muted "State: " [:code {:data-testid "state"} (pr-str state)]]]))
+     [:p.muted "State: " [:code {:data-testid "state"} (pr-str state)]]
+     (inspect/state-pre ctx)]))

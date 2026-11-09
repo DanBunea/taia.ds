@@ -12,6 +12,7 @@
    * one render fn draws the whole widget; the list, the footer and the
      editing row are plain functions of `:memory`."
   (:require
+   [taia.ds.examples.inspect :as inspect]
    [taia.ds.datastar.interface :as ds]))
 
 (defn- post
@@ -73,4 +74,5 @@
          (filter-link component-id current-filter "completed" "Completed")]
         (when (pos? completed)
           [:button.secondary {:type "button" :data-testid "clear-completed"
-                              "data-on:click" (post component-id "clear_completed")} "Clear completed"])])]))
+                              "data-on:click" (post component-id "clear_completed")} "Clear completed"])])
+     (inspect/state-pre ctx)]))

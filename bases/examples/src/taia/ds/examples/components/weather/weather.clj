@@ -16,6 +16,7 @@
    data, re-fetched on demand, and must not be echoed back from the client.
    Only the city (the user's choice) is in the store."
   (:require
+   [taia.ds.examples.inspect :as inspect]
    [taia.ds.datastar.interface :as ds]))
 
 (def quick-picks ["Barcelona" "Oslo" "Tokyo" "Lima"])
@@ -70,4 +71,5 @@
      [:p.muted (str "state: " (pr-str state))])
    (when (#{:loaded :failed} state)
      (search-bar component-id))
-   [:p.muted "State: " [:code {:data-testid "state"} (pr-str state)]]])
+   [:p.muted "State: " [:code {:data-testid "state"} (pr-str state)]]
+   (inspect/state-pre ctx)])
