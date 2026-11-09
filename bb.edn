@@ -1,0 +1,20 @@
+{:tasks
+ {:init (println "taia.ds")
+  dev          {:doc "Start the example dev server on http://localhost:7788 (counter pages)"
+                :task (clojure "-M:dev -m dev")}
+  test         {:doc "Run the unit tests (Kaocha + RCF inline tests)"
+                :task (clojure "-M:test")}
+  check        {:doc "Validate the Polylith workspace"
+                :task (clojure "-M:poly check")}
+  info         {:doc "Show the Polylith workspace"
+                :task (clojure "-M:poly info")}
+  format       {:doc "Format all source files"
+                :task (shell "cljfmt fix")}
+  format:check {:doc "Check formatting"
+                :task (shell "cljfmt check")}
+  jar          {:doc "Build target/taia.ds-<version>.jar (pass :version \"x.y.z\" to override)"
+                :task (apply clojure "-T:build jar" *command-line-args*)}
+  install      {:doc "Build and install the jar into ~/.m2"
+                :task (apply clojure "-T:build install" *command-line-args*)}
+  deploy       {:doc "Build and deploy to Clojars (needs CLOJARS_USERNAME / CLOJARS_PASSWORD)"
+                :task (apply clojure "-T:build deploy" *command-line-args*)}}}

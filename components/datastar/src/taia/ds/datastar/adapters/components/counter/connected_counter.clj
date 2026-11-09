@@ -1,0 +1,24 @@
+(ns taia.ds.datastar.adapters.components.counter.connected-counter
+  "Counter component for testing the dynamic component endpoint mechanism."
+  (:require
+   [taia.ds.datastar.adapters.handlers.context :as c]))
+
+(defn connected-counter [{:keys [component-id] :as ctx}]
+  [[:broadcast
+    [:div.counter-container
+     {:id component-id
+      :data-signals (c/ctx->data-signals ctx)}
+     [:h3 "Counter Component"]
+     [:div.count-display
+      {:style {:font-size "24px"
+               :font-weight "bold"
+               :margin "20px 0"}}
+      (str "Count: " (get-in ctx [:memory :count]))]
+     [:button.btn.contained
+      {"data-on:click" (str "@post('/ds/nds/counter.connected-counter/" component-id "/increment')")
+       :type "button"
+       :style {:padding "10px 20px"
+               :font-size "16px"}}
+      "Increment"]]
+    {:d*/selector (str "#" component-id)}]])
+

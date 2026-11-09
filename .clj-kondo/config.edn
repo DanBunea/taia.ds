@@ -1,0 +1,4 @@
+{;; RCF (hyperfiddle.rcf) uses `_` as a wildcard pattern matcher inside
+ ;; `(tests ...)` blocks. clj-kondo does not understand the macro expansion,
+ ;; so we suppress unresolved-symbol globally for `_`.
+ :linters {:unresolved-symbol {:exclude-patterns ["^_$"]}}}
