@@ -6,7 +6,9 @@
    [clojure.string :as str]
    [hyperfiddle.rcf :refer [tests]]
    [taia.ds.datastar.interface :as ds]
+   [spy.core :as spy]
    [taia.ds.examples.components.live.live-counter-controller :as live]
+   [taia.ds.examples.components.weather.weather-api :as weather-api]
    [taia.ds.examples.test-support :as ts :refer [run step testid-text]]))
 
 ;; Both prefixes: the examples first, the brick's own fixtures second, so the
@@ -144,3 +146,51 @@
  (get-in t6 [:memory :editingId]) := nil
  (mapv :id (get-in (run "todomvc.todomvc" "todos1" {:memory (assoc (:memory t5) :editText " ") :state :displayed} "save_edit") [:memory :todos])) := [1]
  (get-in (step "todomvc.todomvc" "todos1" t5 "cancel_edit") [:memory :editingId]) := nil)
+
+(def fake-weather
+  {:place "Oslo, Norway" :temperature -1.4 :wind 11.0 :condition "Light snow" :observed-at "2026-11-09T15:00"})
+
+(tests
+ "6 weather: INIT renders the skeleton and does NOT fetch; the skeleton's data-init posts LOAD"
+ (with-redefs [weather-api/fetch-current-weather (spy/spy (fn [_] fake-weather))]
+   (def wx0 (run "weather.weather" "weather1" {} "init"))
+   (:state wx0) := :loading
+   (:memory wx0) := {:city "Barcelona"}
+   (spy/not-called? weather-api/fetch-current-weather) := true
+   (testid-text (:html wx0) "loading") := "…Loading the weather in Barcelona…"
+   (ts/extract-post-urls (:html wx0)) := ["/ds/nds/weather.weather/weather1/load"])
+
+ "6 weather: LOAD enters :fetching, the invoke runs in the same request, on-done lands in :loaded with the weather in ctx (not :memory)"
+ (with-redefs [weather-api/fetch-current-weather (spy/spy (fn [_] fake-weather))]
+   (def wx1 (step "weather.weather" "weather1" wx0 "load"))
+   (spy/calls weather-api/fetch-current-weather) := [["Barcelona"]]
+   (:state wx1) := :loaded
+   (:weather (:ctx wx1)) := fake-weather
+   (:memory wx1) := {:city "Barcelona"}
+   (testid-text (:html wx1) "temperature") := "-1.4 °C"
+   (testid-text (:html wx1) "place") := "Oslo, Norway")
+
+ "6 weather: SEARCH captures ?city= into :memory before the invoke reads it; without the param the bound input wins"
+ (with-redefs [weather-api/fetch-current-weather (spy/spy (fn [_] fake-weather))]
+   (def wx2 (step "weather.weather" "weather1" wx1 "search" {:city "Oslo"}))
+   (:state wx2) := :loaded
+   (get-in wx2 [:memory :city]) := "Oslo"
+   (spy/calls weather-api/fetch-current-weather) := [["Oslo"]]
+   (def wx3 (run "weather.weather" "weather1" {:memory {:city "Tokyo"} :state :loaded} "search"))
+   (spy/calls weather-api/fetch-current-weather) := [["Oslo"] ["Tokyo"]])
+
+ "6 weather: a refused lookup lands in :failed with the message; the error is in ctx and the retry posts LOAD"
+ (with-redefs [weather-api/fetch-current-weather (fn [city] (throw (ex-info "nope" {:message (str "No place called '" city "' was found.")})))]
+   (def wx4 (run "weather.weather" "weather1" {:memory {:city "Nowhere"} :state :loaded} "search"))
+   (:state wx4) := :failed
+   (:error (:ctx wx4)) := "No place called 'Nowhere' was found."
+   (contains? (:memory wx4) :error) := false
+   (testid-text (:html wx4) "error") := "No place called 'Nowhere' was found.")
+
+ "6 weather: INIT from any state goes back to :loading (reconnect re-fetches)"
+ (:state (step "weather.weather" "weather1" wx1 "init")) := :loading
+ (:state (step "weather.weather" "weather1" wx4 "init")) := :loading
+
+ "6 weather: WMO codes have a description, unknown ones fall back"
+ (weather-api/describe-code 71) := "Light snow"
+ (weather-api/describe-code 42) := "Weather code 42")

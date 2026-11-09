@@ -91,6 +91,15 @@ effect; a list with no patch at all is answered with an empty body.
 `:broadcast` is **not** a render effect — the one-shot path ignores it. It belongs to
 [`send-ui!`](connected-components.md).
 
+## Loading states
+
+Invokes are synchronous, so never fetch in INIT. Render a skeleton whose `data-init` posts a
+`LOAD` event, and do the work in the state LOAD enters — first paint is instant and the slow
+request is a second round trip. For feedback while a request is in flight, put
+`data-indicator="_busy"` on the triggering element and bind `data-show` / `data-attr:disabled` to
+`$_busy`; the underscore keeps that signal client-local. [Example 6](examples/06-weather.md) shows
+both.
+
 ## Full-page renders at a canonical URL
 
 ```clojure

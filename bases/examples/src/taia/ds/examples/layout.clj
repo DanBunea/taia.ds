@@ -27,7 +27,10 @@
     :doc "04-wizard.md"}
    {:slug "todomvc" :title "5 · TodoMVC" :component "todomvc.todomvc" :cid "todos1"
     :summary "The classic, entirely in `:memory`: query-string event params, filters, inline editing, keyboard events."
-    :doc "05-todomvc.md"}])
+    :doc "05-todomvc.md"}
+   {:slug "weather" :title "6 · Weather" :component "weather.weather" :cid "weather1"
+    :summary "An invoke calling a public API (Open-Meteo), a lazy-loading skeleton, `data-indicator` while a request is in flight, the error path."
+    :doc "06-weather.md"}])
 
 (defn find-example [slug]
   (first (filter #(= slug (:slug %)) examples)))

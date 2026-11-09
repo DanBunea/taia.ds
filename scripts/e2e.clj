@@ -38,7 +38,9 @@
     (throw (ex-info (str "port " port " is already in use — stop that server first") {})))
   (fs/create-dirs "e2e/test-results")
   (println (str "▶ starting the examples app on " base-url " (log: " log-file ")"))
-  (let [proc (p/process {:out :write :out-file (fs/file log-file) :err :out}
+  (let [proc (p/process {:out :write :out-file (fs/file log-file) :err :out
+                         ;; the weather example answers from a table instead of Open-Meteo
+                         :extra-env {"TAIA_EXAMPLES_FAKE_WEATHER" "1"}}
                         "clojure" "-M:dev" "-e"
                         (str "(require 'taia.ds.examples.core) "
                              "(taia.ds.examples.core/start! " port ") "

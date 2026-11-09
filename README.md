@@ -29,7 +29,7 @@ are no-ops unless you call `(hyperfiddle.rcf/enable!)`.
 
 - [Getting started](docs/getting-started.md) · [Components](docs/components.md) · [State machines](docs/state-machines.md) · [Connected components and push](docs/connected-components.md)
 - [Testing components](docs/testing.md) · [Gotchas](docs/gotchas.md) (read this one) · [Migration](docs/migration.md) · [API index](docs/api.md)
-- [Examples](docs/examples/README.md): five components in `bases/examples`, one concept each, each with a walkthrough and an executable spec. `bb dev` serves them on http://localhost:7788/.
+- [Examples](docs/examples/README.md): six components in `bases/examples`, one concept each, each with a walkthrough and an executable spec. `bb dev` serves them on http://localhost:7788/.
 
 The same articles render on cljdoc once the jar is on Clojars (`doc/cljdoc.edn`).
 

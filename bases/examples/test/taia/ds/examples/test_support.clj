@@ -20,11 +20,12 @@
 
 (defn run
   "Runs `event` (lowercase, as in the URL) for `component` with the given
-   `:memory`/`:state`/`:params`. Returns {:memory :state :html} — `:html` is
-   hiccup, or an effects list when the render fn returned one."
+   `:memory`/`:state`/`:params`. Returns {:memory :state :html :ctx} — `:html` is
+   hiccup, or an effects list when the render fn returned one; `:ctx` is the
+   whole post-transition context (top-level keys an invoke added live there)."
   [component cid opts event]
   (let [{:keys [ctx html]} (ds/process-component-event (request cid opts) component cid event nil)]
-    {:memory (:memory ctx) :state (:state ctx) :html html}))
+    {:memory (:memory ctx) :state (:state ctx) :html html :ctx ctx}))
 
 (defn step
   "Feeds the previous `run` result back in as the next request's store — what
