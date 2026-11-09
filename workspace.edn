@@ -5,4 +5,5 @@
  :vcs {:name "git" :auto-add false}
  :tag-patterns {:stable "stable-*" :release "v[0-9]*"}
  :projects {"development" {:alias "dev"}
-            "taia-ds" {:alias "lib" :necessary ["datastar"]}}}
+            "taia-ds"     {:alias "lib" :necessary ["datastar"]}
+            "examples"    {:alias "ex"}}}

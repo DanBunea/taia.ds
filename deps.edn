@@ -2,6 +2,7 @@
 ;; (for the development project) and in projects/taia-ds/deps.edn (the jar).
 {:aliases
  {:dev {:extra-paths ["development/src"
+                      "bases/examples/src"
                       "components/datastar/src"
                       "components/datastar/resources"
                       "components/state-machines/src"
@@ -25,6 +26,7 @@
                      nrepl/nrepl                {:mvn/version "1.3.1"}}}
 
   :test {:jvm-opts ["-Dhyperfiddle.rcf.generate-tests=true"]
+         :extra-paths ["bases/examples/test"]
          :extra-deps {lambdaisland/kaocha {:mvn/version "1.91.1392"}
                       hickory/hickory     {:mvn/version "0.7.1"}
                       org.jsoup/jsoup     {:mvn/version "1.9.2"}}

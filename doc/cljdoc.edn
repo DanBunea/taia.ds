@@ -1,0 +1,17 @@
+{:cljdoc.doc/tree
+ [["Readme" {:file "README.md"}]
+  ["Getting started" {:file "docs/getting-started.md"}]
+  ["Components" {:file "docs/components.md"}]
+  ["State machines" {:file "docs/state-machines.md"}]
+  ["Connected components and push" {:file "docs/connected-components.md"}]
+  ["Testing components" {:file "docs/testing.md"}]
+  ["Gotchas" {:file "docs/gotchas.md"}]
+  ["Examples" {:file "docs/examples/README.md"}
+   ["1 · Counter" {:file "docs/examples/01-counter.md"}]
+   ["2 · Live counter" {:file "docs/examples/02-live-counter.md"}]
+   ["3 · Signup form" {:file "docs/examples/03-signup-form.md"}]
+   ["4 · Wizard" {:file "docs/examples/04-wizard.md"}]
+   ["5 · TodoMVC" {:file "docs/examples/05-todomvc.md"}]]
+  ["Migrating from the in-app namespaces" {:file "docs/migration.md"}]
+  ["API index" {:file "docs/api.md"}]
+  ["Changelog" {:file "CHANGELOG.md"}]]}

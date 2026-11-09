@@ -4,7 +4,9 @@
    [taia.ds.datastar.adapters.handlers.connected-component-handler :as cce]
    #?(:clj [taia.ds.datastar.adapters.handlers.discovery :as discovery])
    #?(:clj [taia.ds.datastar.adapters.handlers.observer :as observer])
-   #?(:clj [taia.ds.datastar.adapters.handlers.pipeline :as pipeline])))
+   #?(:clj [taia.ds.datastar.adapters.handlers.pipeline :as pipeline])
+   #?(:clj [taia.ds.datastar.adapters.handlers.response :as response])
+   [taia.ds.datastar.adapters.handlers.context :as context]))
 
 ;; Dynamic component event handler
 (def handler-component-event
@@ -61,3 +63,18 @@
       the SSE client identified by component-id and user-id."
      [component-id user-id component-responses]
      (cce/send-ui! component-id user-id component-responses)))
+
+(defn ctx->data-signals
+  "The `data-signals` attribute value for a component's root element: the
+   component's `:memory` plus `:state`, namespaced under its component-id, as
+   JSON. Datastar sends this store back with every @post/@get, which is how
+   `:memory` round-trips between requests. Pure; never throws."
+  [ctx]
+  (context/ctx->data-signals ctx))
+
+#?(:clj
+   (defn html-response
+     "Ring 200 text/html response for `hiccup` — e.g. the full-page render that
+      `process-component-event` returns for a GET at a canonical URL."
+     [hiccup]
+     (response/->html hiccup)))

@@ -25,6 +25,14 @@ Runtime dependency note: `hyperfiddle/rcf` and `tortue/spy` are real (small) run
 the test blocks live inline in the sources and the state machine requires `spy.core`. RCF blocks
 are no-ops unless you call `(hyperfiddle.rcf/enable!)`.
 
+## Documentation
+
+- [Getting started](docs/getting-started.md) · [Components](docs/components.md) · [State machines](docs/state-machines.md) · [Connected components and push](docs/connected-components.md)
+- [Testing components](docs/testing.md) · [Gotchas](docs/gotchas.md) (read this one) · [Migration](docs/migration.md) · [API index](docs/api.md)
+- [Examples](docs/examples/README.md): five components in `bases/examples`, one concept each, each with a walkthrough and an executable spec. `bb dev` serves them on http://localhost:7788/.
+
+The same articles render on cljdoc once the jar is on Clojars (`doc/cljdoc.edn`).
+
 ## Wiring it into an application
 
 The library ships no routes: your base owns them. Mount the two handlers on these three shapes
@@ -99,10 +107,8 @@ my/app/components/counter/counter_controller.clj  ; (ns my.app.components.counte
 - Events arrive as `POST /ds/nds/counter.counter/<id>/<EVENT>`; `:memory` is your persistent state,
   `:state` the FSM state keyword.
 
-See `components/datastar/src/taia/ds/datastar/adapters/components/counter/` for four small examples
-(one-shot and connected, component and page). With `bb dev` running, open `/connected`, then from a
-REPL on port 7789 run the `send-ui!` form in the `comment` block of `development/src/dev.clj` — the
-page updates without a request.
+The [examples](docs/examples/README.md) go from a counter to TodoMVC; the brick's own
+`adapters/components/counter/` holds the minimal fixtures its tests use.
 
 Effect vocabulary a render fn may return instead of plain hiccup: `[[:patch hiccup opts] …]`,
 `[:patch-signals map opts]`, `[:execute-script js opts]`; `opts` keys/values may be `:d*/…` keywords
@@ -117,15 +123,17 @@ This is a [Polylith](https://polylith.gitbook.io/) workspace.
 bb test          # Kaocha + RCF inline tests (clojure -M:dev:test)
 bb check         # poly check
 bb info          # poly info
-bb dev           # example server: http://localhost:7788/ and /connected, nREPL on 7789
+bb dev           # examples app: http://localhost:7788/ (nREPL on 7789)
+bb api-index     # regenerate docs/api.md from the interface namespaces
 bb format        # cljfmt
 bb jar           # target/taia.ds-<version>.jar  (version = 0.1.<git commit count>, or :version "x.y.z")
 bb install       # into ~/.m2
 bb deploy        # to Clojars
 ```
 
-`clojure -M:poly <cmd>` runs any other poly command. The library artifact is `projects/taia-ds`;
-`build.clj` inlines the four bricks into one jar whose pom lists Maven libraries only.
+`clojure -M:poly <cmd>` runs any other poly command. The library artifact is `projects/taia-ds`
+(the four bricks, nothing else); `projects/examples` adds the `examples` base and is never
+published. `build.clj` inlines the bricks into one jar whose pom lists Maven libraries only.
 
 ### Publishing
 

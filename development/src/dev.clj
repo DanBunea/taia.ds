@@ -1,96 +1,25 @@
 (ns dev
-  "Development entry point: a small Ring/reitit server that mounts the
-   datastar handlers and serves the example counter pages.
+  "Development entry point: the examples application plus an nREPL.
 
-     bb dev                       ; or: clojure -M:dev -m dev
-     http://localhost:7788/        ; counter (one-shot /ds/nds events)
-     http://localhost:7788/connected ; connected counter (/ds/nds-connect SSE)
+     bb dev                        ; or: clojure -M:dev -m dev
+     http://localhost:7788/        ; examples index
+     nREPL on 7789                 ; e.g. Clojure MCP clojure_eval with port 7789
 
-   This mirrors what an application base has to do: routes with the
-   component/component-id/event path params, params + JSON body parsing, a
-   :logged-user with a :user/id, the static assets, and an async Jetty."
+   The HTTP wiring lives in `taia.ds.examples.core` (the `examples` base), which
+   is also the reference for how an application base mounts the library."
   (:require
    [hyperfiddle.rcf]
    [nrepl.server :as nrepl]
-   [muuntaja.core :as m]
-   [reitit.coercion.malli :as malli]
-   [reitit.ring :as reitit]
-   [reitit.ring.coercion :as rrc]
-   [reitit.ring.middleware.muuntaja :as rrmm]
-   [ring.adapter.jetty :as jetty]
-   [ring.middleware.content-type :refer [wrap-content-type]]
-   [ring.middleware.keyword-params :refer [wrap-keyword-params]]
-   [ring.middleware.params :refer [wrap-params]]
-   [ring.middleware.resource :refer [wrap-resource]]
-   [taia.ds.datastar.adapters.handlers.response :refer [->html]]
-   [taia.ds.datastar.interface :as ds]))
+   [taia.ds.datastar.interface :as ds]
+   [taia.ds.examples.core :as examples]))
 
 (def port 7788)
 (def nrepl-port 7789)
 
-(defn- wrap-logged-user
-  "Stand-in for an application's auth middleware: the handlers key SSE
-   connections by [:params :logged-user :user/id]."
-  [handler]
-  (fn
-    ([req] (handler (assoc-in req [:params :logged-user] {:user/id "dev"})))
-    ([req respond raise] (handler (assoc-in req [:params :logged-user] {:user/id "dev"}) respond raise))))
-
-(defn- page-handler
-  "Serves a component's full-page INIT render at a canonical URL."
-  [component-name component-id]
-  (let [render (fn [req]
-                 (let [{:keys [html]} (ds/process-component-event req component-name component-id "INIT" nil)]
-                   (->html html)))]
-    ;; async Jetty calls the 3-arity; a sync-only handler would hang the request
-    (fn
-      ([req] (render req))
-      ([req respond raise]
-       (try (respond (render req))
-            (catch Throwable t (raise t)))))))
-
-(def path-params
-  {:component :string :component-id :string :event :string})
-
-(defn router []
-  (reitit/router
-   [["/" {:get {:handler (page-handler "counter.counter-page" "cp1")}}]
-    ["/connected" {:get {:handler (page-handler "counter.connected-counter-page" "cc1")}}]
-    ["/ds"
-     ["/nds"
-      ["/:component/:component-id/:controller/:event"
-       {:parameters {:path (assoc path-params :controller :string)}
-        :handler    ds/handler-component-event}]
-      ["/:component/:component-id/:event"
-       {:parameters {:path path-params}
-        :handler    ds/handler-component-event}]]
-     ["/nds-connect"
-      ["/:component/:component-id/:event"
-       {:parameters {:path path-params}
-        :handler    ds/handler-connected-component-connect}]]]]
-   {:data {:muuntaja   m/instance
-           :coercion   malli/coercion
-           :middleware [rrmm/format-middleware
-                        rrc/coerce-exceptions-middleware
-                        rrc/coerce-request-middleware
-                        rrc/coerce-response-middleware]}}))
-
-(defn app []
-  (-> (reitit/ring-handler (router) (reitit/create-default-handler))
-      wrap-logged-user
-      wrap-keyword-params
-      wrap-params
-      (wrap-resource "datastar")
-      ;; module scripts need a real MIME type, wrap-resource alone sends none
-      wrap-content-type))
-
-(defonce !server (atom nil))
 (defonce !nrepl (atom nil))
 
 (defn stop! []
-  (when-let [s @!server]
-    (.stop s)
-    (reset! !server nil))
+  (examples/stop!)
   (when-let [n @!nrepl]
     (nrepl/stop-server n)
     (reset! !nrepl nil)))
@@ -98,16 +27,15 @@
 (defn start! []
   (stop!)
   (hyperfiddle.rcf/enable!)
-  (ds/set-component-search-paths! ["taia.ds.datastar.adapters.components"])
-  (reset! !server (jetty/run-jetty (app) {:port port :join? false :async? true}))
+  (examples/start! port)
   (reset! !nrepl (nrepl/start-server :port nrepl-port))
   (spit ".nrepl-port" nrepl-port)
-  (println (str "taia.ds dev server on http://localhost:" port "/  (and /connected); nREPL on " nrepl-port))
-  @!server)
+  (println (str "taia.ds examples on http://localhost:" port "/ ; nREPL on " nrepl-port)))
 
 (comment
-  ;; push a server-initiated patch to the connected counter page
-  (ds/send-ui! "cc1" "dev" [[:patch [:div#cc1 "pushed from the REPL"] {:d*/selector "#cc1"}]]))
+  ;; With /examples/live-counter open: push a fragment to every connected tab.
+  (ds/send-ui! "live1" "demo-user"
+               [[:broadcast [:div#live1 [:h2 "Pushed from the REPL"]] {:d*/selector "#live1"}]]))
 
 (defn -main [& _]
   (start!)

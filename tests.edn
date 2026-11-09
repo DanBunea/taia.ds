@@ -4,12 +4,16 @@
    :kaocha.testable/id :unit
    :kaocha/ns-patterns ["$"]
    ;; RCF `(tests …)` blocks live inline in src, so src dirs are test paths too.
-   :kaocha/source-paths ["components/datastar/src"
+   :kaocha/source-paths ["bases/examples/src"
+                         "bases/examples/test"
+                         "components/datastar/src"
                          "components/datastar/resources"
                          "components/state-machines/src"
                          "components/logging/src"
                          "components/extensions/src"]
-   :kaocha/test-paths ["components/datastar/src"
+   :kaocha/test-paths ["bases/examples/src"
+                       "bases/examples/test"
+                       "components/datastar/src"
                        "components/state-machines/src"
                        "components/logging/src"
                        "components/extensions/src"]

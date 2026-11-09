@@ -1,8 +1,8 @@
 {:tasks
  {:init (println "taia.ds")
-  dev          {:doc "Start the example dev server on http://localhost:7788 (counter pages)"
+  dev          {:doc "Start the examples app on http://localhost:7788 (nREPL 7789)"
                 :task (clojure "-M:dev -m dev")}
-  test         {:doc "Run the unit tests (Kaocha + RCF inline tests)"
+  test         {:doc "Run the unit tests (Kaocha + RCF inline tests, examples included)"
                 :task (clojure "-M:dev:test")}
   check        {:doc "Validate the Polylith workspace"
                 :task (clojure "-M:poly check")}
@@ -12,6 +12,8 @@
                 :task (shell "cljfmt fix")}
   format:check {:doc "Check formatting"
                 :task (shell "cljfmt check")}
+  api-index    {:doc "Regenerate docs/api.md from the brick interface namespaces"
+                :task (load-file "scripts/api_index.clj")}
   jar          {:doc "Build target/taia.ds-<version>.jar (pass :version \"x.y.z\" to override)"
                 :task (apply clojure "-T:build jar" *command-line-args*)}
   install      {:doc "Build and install the jar into ~/.m2"
