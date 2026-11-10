@@ -655,7 +655,7 @@
 (tests
  "transition should handle invoke with on-done targeting hierarchical state (sub-machine entry)"
 
- "Invoke with on-done as bare vector (Ramon-style)"
+ "Invoke with on-done as bare vector (bare vector form)"
  (def invoke-to-sub-machine
    {:states
     {:a {:on {:START {:target :b}}}

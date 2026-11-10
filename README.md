@@ -1,12 +1,16 @@
 # taia.ds
 
+```clojure
+io.github.danbunea/taia.ds {:mvn/version "0.1.0"}
+```
+
 Server-side UI components over [Datastar](https://data-star.dev/) SSE, LiveView-style, for Clojure/Ring.
 A component is a pure render function `(fn [ctx] -> hiccup)` plus a hierarchical state machine; the
 browser round-trips the component's signals (`:memory`, `:state`) as JSON, the server runs the
 transition and streams back patches. Long-lived components keep an SSE connection open so the server
 can push UI with `send-ui!`.
 
-Extracted from the `tbc.polylith` application, where it drives the whole product UI.
+Extracted from a production Clojure application, where it drives the whole product UI.
 
 One click on the counter example, end to end — the signal store travels with the POST, the
 controller's action produces the new ctx, the render fn turns it into hiccup, and Datastar morphs
@@ -17,9 +21,6 @@ the HTML back in:
 (The source is [`docs/img/counter-flow.svg`](docs/img/counter-flow.svg), an animated SVG; `bb flow-gif`
 re-renders the GIF from it.)
 
-```clojure
-io.github.danbunea/taia.ds {:mvn/version "0.1.0"}
-```
 
 ## What is in the jar
 
@@ -154,7 +155,7 @@ published. `build.clj` inlines the bricks into one jar whose pom lists Maven lib
 
 ## Migrating from the in-app namespaces
 
-| Before (tbc.polylith) | After |
+| Before (in-app)       | After |
 |-----------------------|-------|
 | `ds.interface`, `ds.adapters.*`, `ds.domain.*` | `taia.ds.datastar.interface`, `taia.ds.datastar.adapters.*`, `taia.ds.datastar.domain.*` |
 | `state-machines.*` | `taia.ds.state-machines.*` |

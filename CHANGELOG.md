@@ -2,7 +2,7 @@
 
 ## 0.1.0 — 2026-11-09
 
-- Extracted from `tbc.polylith` (commit `6e93fd4a`) as a standalone Polylith workspace.
+- Extracted from the application it was developed in, as a standalone Polylith workspace.
 - Bricks: `datastar`, `state-machines`, `logging`, `extensions`, renamed under `taia.ds.*`.
 - `datastar.js` (v1.0.0-RC.8) and `sse-reconnect.js` shipped as classpath resources under `datastar/js/`.
 - `examples` base + `projects/examples`: six components (counter, live counter, signup form, wizard, TodoMVC, weather via Open-Meteo) with walkthroughs in `docs/examples/` and an in-process test suite; `bb dev` serves them.
