@@ -3,6 +3,18 @@
 `signup.signup` — [`signup.clj`](../../bases/examples/src/taia/ds/examples/components/signup/signup.clj),
 [`signup_controller.clj`](../../bases/examples/src/taia/ds/examples/components/signup/signup_controller.clj).
 
+**State machine**
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  [*] --> editing : INIT / seed blanks
+  editing --> submitted : SUBMIT [valid] / clear errors
+  editing --> editing : SUBMIT / set errors
+  submitted --> editing : RESET / blank memory
+  submitted --> submitted : INIT
+```
+
 **What to look at**
 
 - Inputs carry `"data-bind" "signup1.name"`: typing writes the field into this component's slice

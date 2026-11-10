@@ -460,11 +460,7 @@
 
 (tests
  "transition should pass context and event params to the condition evaluation functions"
- (def invocations (atom []))
- (defn condition-fn [ctx ev]
-   (do
-     (swap! invocations conj [ctx ev])
-     true))
+ (def condition-fn (spy/spy (fn [_ctx _ev] true)))
 
  (transition
   {:states {:A {:on {:EC2 [{:target :B
@@ -473,12 +469,11 @@
   {:_state :A :something "here"}
   [:EC2 {:event "params"}]) := {:_state :B :something "here"}
 
- @invocations := [[{:something "here"} {:event "params"}]])
+ (spy/calls condition-fn) := [[{:something "here"} {:event "params"}]])
 
 (tests
  "transition fails when there is no matching condition, warns but doen't do anything"
- (def invocations (atom []))
- (with-redefs [warn #(swap! invocations conj %)]
+ (with-redefs [warn (spy/spy)]
    (transition
     {:states {:A {:on {:EC2 [{:target :B
                               :cond (fn [_ _] false)}
@@ -489,11 +484,7 @@
     {:_state :A}
     [:EC2 {}]) := {:_state :A}
 
-   (-> @invocations
-       first
-       (clojure.string/starts-with? "No matching condition for the event :EC2")) := true
-
-   (reset! invocations [])
+   (-> (spy/last-call warn) first (clojure.string/starts-with? "No matching condition for the event :EC2")) := true
 
    "transition fails when current state invalid , warns but doen't do anything"
    (transition
@@ -502,12 +493,7 @@
     [:EC2 {}])
    := {:_state :not-exists}
 
-   (-> @invocations
-       first
-       (clojure.string/starts-with?
-        "Event :EC2 not found!.")) := true
-
-   (reset! invocations [])
+   (-> (spy/last-call warn) first (clojure.string/starts-with? "Event :EC2 not found!.")) := true
 
    "transition fails when event invalid , warns but doen't do anything"
 
@@ -516,10 +502,7 @@
     {:_state :A}
     [:NOT-EXISTING {}]) :=  {:_state :A}
 
-   (-> @invocations
-       first
-       (clojure.string/starts-with? "Event :NOT-EXISTING not found!."))
-   := true))
+   (-> (spy/last-call warn) first (clojure.string/starts-with? "Event :NOT-EXISTING not found!.")) := true))
 
 (tests
  "transition should handle invoke on state entry"
@@ -733,21 +716,17 @@
  := {:_state :slow-path}
 
  "conditional on-done: cond receives context (without state key) and invoke result"
- (def cond-invocations (atom []))
+ (def inspect-cond (spy/spy (fn [_ctx _result] true)))
  (def cond-inspect-machine
    {:states
     {:a {:on {:START {:target :b}}}
      :b {:invoke {:src (fn [_] {:data 42})
-                  :on-done [{:target :ok
-                             :cond (fn [ctx result]
-                                     (swap! cond-invocations conj [ctx result])
-                                     true)}]}}
+                  :on-done [{:target :ok :cond inspect-cond}]}}
      :ok {}}})
 
- (reset! cond-invocations [])
  (transition cond-inspect-machine {:_state :a :extra "ctx"} [:START {}])
  := {:_state :ok :extra "ctx"}
- @cond-invocations := [[{:extra "ctx"} {:data 42}]]
+ (spy/calls inspect-cond) := [[{:extra "ctx"} {:data 42}]]
 
  "conditional on-done: each branch can have its own action"
  (def cond-actions-machine

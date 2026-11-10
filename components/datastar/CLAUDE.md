@@ -10,7 +10,7 @@ Server-side UI component framework (LiveView-style) over [Datastar](https://data
 - `taia.ds.datastar.adapters.handlers.discovery-cache` — caches the search-path scan per `[component controller]`. It stores the resolved namespace SYMBOLS, never the vars, so REPL redefs (and `remove-ns`) are always picked up; `set-component-search-paths!` clears it. `discovery/warm-cache!` (exposed as `warm-component-cache!`) pre-resolves a list of components on a background thread at startup — otherwise the first request for a component pays the namespace-load cost on the request thread.
 - `taia.ds.datastar.adapters.handlers.{context,response,default_component_handler,connected_component_handler}` — ctx assembly and SSE response plumbing.
 - `taia.ds.datastar.adapters.handlers.observer` — the optional observer hook (`set-observer!`). Both handlers report component-event timing and SSE open/close as plain maps, with bounded labels (discovered components, machine-declared events) and no component-id. It stays metrics-agnostic: the application plugs in its own metrics sink.
-- `taia.ds.datastar.adapters.components.counter.*` — example components (also exercised by the inline tests and the development server).
+- The brick ships NO example components and no fixture files. `test/…/handlers/discovery_test.clj` defines the component its discovery tests resolve in memory (`install-fixture!`); the examples live in `bases/examples`.
 
 ## Conventions
 

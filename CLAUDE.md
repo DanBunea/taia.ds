@@ -32,6 +32,6 @@ bb deploy        # jar + deploy to Clojars (CLOJARS_USERNAME / CLOJARS_PASSWORD)
 
 - Keep the bricks application-agnostic: no product CSS, routes, or component names in `components/`. Bases and consumers use `taia.ds.<brick>.interface` only (`poly check` enforces it) — if component code needs a helper from `adapters.*`, expose it on the interface.
 - Tests are inline RCF `(tests …)` blocks in `src` (no `deftest`); src dirs are Kaocha test paths. Values bound with `def`, assertions top-level.
-- Dynamic requires: component discovery resolves `<search-path>.<component>` and `-controller` siblings at runtime; the default search path is `taia.ds.datastar.adapters.components`. Any rename of the example components must update `discovery.clj` tests.
+- Dynamic requires: component discovery resolves `<search-path>.<component>` and `-controller` siblings at runtime; the default search path is EMPTY — the library ships no components; `discovery_test.clj` defines its fixture in memory under its own prefix.
 - `datastar.js` and `dev.data-star.clojure/sdk` versions must match (both RC8).
 - Brick-local notes: `components/datastar/CLAUDE.md`.

@@ -7,6 +7,20 @@
 An `:invoke` that calls a public API ([Open-Meteo](https://open-meteo.com/), no key), and the two
 loading patterns you will use everywhere.
 
+**State machine**
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  [*] --> loading : INIT / seed
+  loading --> fetching : LOAD
+  fetching --> loaded : fetch-weather! ok / keep weather
+  fetching --> failed : fetch-weather! failed / keep error
+  loaded --> fetching : SEARCH / capture city
+  failed --> fetching : SEARCH / capture city
+  failed --> fetching : LOAD
+```
+
 **The lazy load.** Invokes run synchronously inside the request, so a fetch in INIT would hold the
 first paint. Instead INIT renders a skeleton (`:loading`) whose `data-init` posts `LOAD` at once;
 LOAD enters `:fetching`, whose invoke does the slow work, and the response replaces the skeleton

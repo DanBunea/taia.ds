@@ -9,7 +9,8 @@
    [dev.onionpancakes.chassis.core :as h]
    [hickory.core :as hickory]
    [hickory.select :as s]
-   [taia.ds.datastar.interface :as ds]))
+   [taia.ds.datastar.interface :as ds]
+   [taia.ds.examples.core :as core]))
 
 (defn request
   "A request shaped like the one the handlers see: the signal store under the
@@ -24,6 +25,9 @@
    hiccup, or an effects list when the render fn returned one; `:ctx` is the
    whole post-transition context (top-level keys an invoke added live there)."
   [component cid opts event]
+  ;; The search paths are one global; set them on every run so no other test
+  ;; namespace's choice (or block order) can leak in.
+  (ds/set-component-search-paths! core/search-paths)
   (let [{:keys [ctx html]} (ds/process-component-event (request cid opts) component cid event nil)]
     {:memory (:memory ctx) :state (:state ctx) :html html :ctx ctx}))
 

@@ -1,17 +1,18 @@
 (ns taia.ds.datastar.adapters.handlers.discovery
   (:require
    [clojure.string :as str]
-   [taia.ds.datastar.adapters.handlers.discovery-cache :as cache]
-   [hyperfiddle.rcf :refer [tests]]
-   [spy.core :as spy]))
+   [taia.ds.datastar.adapters.handlers.discovery-cache :as cache]))
 
 (def ^:private !component-search-paths
-  (atom ["taia.ds.datastar.adapters.components"]))
+  "Namespace prefixes components are resolved under. Empty until the
+   application calls `set-component-search-paths!`; nothing in the library
+   itself is a component."
+  (atom []))
 
 (defn set-component-search-paths!
   "Sets the ordered list of namespace prefixes used to resolve components.
    Call once at startup with the value from app-config.
-   Example: [\"taia.ds.datastar.adapters.components\" \"my.app.components\"]"
+   Example: [\"my.app.components\" \"my.app.admin.components\"]"
   [paths]
   (reset! !component-search-paths paths)
   ;; Cached resolutions record WHICH search path won; a new path order can pick
@@ -123,8 +124,8 @@
   "Discovers a component by namespace path, searching all configured search paths in order.
 
    Takes a namespace path like:
-   - \"counter.counter\" -> tries taia.ds.datastar.adapters.components.counter.counter, then my.app.components.counter.counter, etc.
-   - \"counter.counter-page\" -> similarly tries all configured prefixes
+   - \"chat.chat\" -> tries my.app.components.chat.chat, then the next prefix, etc.
+   - \"chat.chat-page\" -> similarly tries all configured prefixes
 
    Optional controller-name parameter (should include '-controller' suffix):
    - If provided, uses that controller name instead of default
@@ -215,116 +216,3 @@
                 component-names)]
     (assoc report :elapsed-ms (- (System/currentTimeMillis) start))))
 
-(tests
- ;; Test 1: successful discovery via first search path
- (let [result (discover-component "counter.counter")]
-   (var? (:machine result)) := true
-   (fn? (deref (:component-fn result))) := true)
-
- ;; Test 2: successful discovery with counter-page
- (let [result (discover-component "counter.counter-page")]
-   (var? (:machine result)) := true
-   (fn? (deref (:component-fn result))) := true)
-
- ;; Test 3: discovery falls through to a later search path
- (let [original @!component-search-paths]
-   (set-component-search-paths! ["taia.ds.nonexistent.components" "taia.ds.datastar.adapters.components"])
-   (let [result (discover-component "counter.counter")]
-     (var? (:machine result)) := true
-     (fn? (deref (:component-fn result))) := true)
-   (set-component-search-paths! original))
-
- ;; Test 4: throws with descriptive message when namespace not found in any path
- (try
-   (discover-component "nonexistent.component")
-   :no-throw
-   (catch clojure.lang.ExceptionInfo e
-     (let [msg (.getMessage e)
-           data (ex-data e)]
-       (clojure.string/includes? msg "Searched paths:") := true
-       (contains? data :searched-paths) := true)))
-
- ;; Test 8: throws ExceptionInfo when not found
- (discover-component "nonexistent.component") :throws clojure.lang.ExceptionInfo)
-
-(tests
- "discover-component: the search-path scan is cached, and a second call does NOT
-  re-scan (the private finders are never touched again)"
- (cache/clear!)
- (do (discover-component "counter.counter")
-     (with-redefs [find-component-ns (spy/spy find-component-ns)
-                   find-controller-ns (spy/spy find-controller-ns)]
-       (let [result (discover-component "counter.counter")]
-         [(var? (:machine result))
-          (fn? (deref (:component-fn result)))
-          (spy/call-count find-component-ns)
-          (spy/call-count find-controller-ns)
-          (cache/cached-count)])))
- := [true true 0 0 1]
-
- "discover-component: the cache key is [component controller], and a keyword
-  ns-path keys the same entry as the equivalent string"
- (cache/clear!)
- (do (discover-component :counter.counter)
-     (discover-component "counter.counter")
-     (cache/cached-keys))
- := #{["counter.counter" nil]}
-
- "discover-component: vars are resolved fresh on every call, so a REPL redef of
-  the component fn is seen through a cache hit (and restored afterwards)"
- (cache/clear!)
- (let [component-fn-var (:component-fn (discover-component "counter.counter"))
-       original @component-fn-var
-       during (with-redefs-fn {component-fn-var (fn [_ctx] [:div "redefined"])}
-                (fn [] (@(:component-fn (discover-component "counter.counter")) {})))]
-   [during (identical? original @(:component-fn (discover-component "counter.counter")))])
- := [[:div "redefined"] true]
-
- "discover-component: a failed scan caches nothing, so a later fix is picked up"
- (cache/clear!)
- (do (try (discover-component "nonexistent.component") (catch clojure.lang.ExceptionInfo _ nil))
-     (cache/cached-count))
- := 0
-
- "set-component-search-paths! clears the cache — cached entries record which
-  search path won, and a new order can resolve the same name elsewhere"
- (let [original @!component-search-paths]
-   (discover-component "counter.counter")
-   (let [before (cache/cached-count)]
-     (set-component-search-paths! original)
-     [(pos? before) (cache/cached-count)]))
- := [true 0])
-
-(tests
- "warm-cache!: reports what it loaded and leaves those entries cached"
- (cache/clear!)
- (let [report (warm-cache! ["counter.counter" "counter.counter-page"])]
-   [(:warmed report) (:failed report) (number? (:elapsed-ms report)) (cache/cached-count)])
- := [2 [] true 2]
-
- "warm-cache!: a broken component lands in :failed instead of throwing, and the
-  rest of the list still warms"
- (cache/clear!)
- (let [report (warm-cache! ["nonexistent.component" "counter.counter"])]
-   [(:warmed report)
-    (mapv :component (:failed report))
-    (string? (:error (first (:failed report))))
-    (cache/cached-count)])
- := [1 ["nonexistent.component"] true 1]
-
- "warm-cache!: a [component controller] pair warms under the pair key"
- (cache/clear!)
- (do (warm-cache! [["counter.counter" "counter-controller"]])
-     (cache/cached-keys))
- := #{["counter.counter" "counter-controller"]}
-
- "warm-cache!: an empty list is a no-op"
- (cache/clear!)
- (do (warm-cache! []) [(:warmed (warm-cache! [])) (cache/cached-count)])
- := [0 0])
-
-(comment
-
-  (discover-component "counter.counter")
-  (discover-component "counter.counter-page")
-  (discover-component "counterx"))

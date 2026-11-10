@@ -477,18 +477,14 @@
  "send-heartbeat! enqueues one inert patch-signals write per open connection"
  (reset! !connections {"cid-1" {"user-a" ::sse-a}
                        "cid-2" {"user-b" ::sse-b}})
- (let [captured (atom [])]
-   (with-redefs [enqueue-write! (fn [cid uid sse-gen write-fn]
-                                  (swap! captured conj [cid uid sse-gen write-fn]))]
-     (send-heartbeat!))
-   ;; one write enqueued per open connection
-   (count @captured) := 2
+ (with-redefs [enqueue-write! (spy/spy)]
+   (send-heartbeat!)
+   ;; one write enqueued per open connection, each [cid uid sse-gen write-fn]
+   (spy/calls enqueue-write!) := [["cid-1" "user-a" ::sse-a _] ["cid-2" "user-b" ::sse-b _]]
    ;; each enqueued thunk sends an inert empty patch-signals
    (with-redefs [send-effect! (spy/spy)]
-     (doseq [[_ _ _ write-fn] @captured] (write-fn))
-     (spy/call-count send-effect!) := 2
-     (mapv second (spy/calls send-effect!))
-     := [[:patch-signals {} {}] [:patch-signals {} {}]]))
+     (doseq [[_ _ _ write-fn] (spy/calls enqueue-write!)] (write-fn))
+     (spy/calls send-effect!) := [[::sse-a [:patch-signals {} {}]] [::sse-b [:patch-signals {} {}]]]))
  (reset! !connections {}))
 
 (tests
@@ -590,33 +586,25 @@
  "traced-write: a write enqueued INSIDE a trace runs under that trace (the
   captured mulog context is re-established on the consumer thread); the
   thunk's result and side effect are preserved"
- (let [ran (atom [])
-       seen-ctx (atom nil)]
-   (with-redefs [log/local-context (fn [] {:mulog/root-trace :root-1 :turn "t1"})]
-     (let [thunk (traced-write "cid-1" "u1"
-                               (fn []
-                                 (swap! ran conj :written)
-                                 (reset! seen-ctx (com.brunobonacci.mulog/local-context))
-                                 :result))]
-       (thunk) := :result
-       @ran := [:written]
-       ;; the thunk ran inside the captured context
-       (:turn @seen-ctx) := "t1")))
+ (with-redefs [log/local-context (fn [] {:mulog/root-trace :root-1 :turn "t1"})]
+   ;; the write answers with the context it ran under; the thunk returns that
+   ;; answer, so one assertion covers both the context and the result passthrough
+   (let [write (spy/spy (fn [] (:turn (com.brunobonacci.mulog/local-context))))
+         thunk (traced-write "cid-1" "u1" write)]
+     (thunk) := "t1"
+     (spy/call-count write) := 1))
 
  "traced-write: a context-less FAST write reports nothing; a SLOW one reports
   ::sse-write-slow with the elapsed write time"
- (let [reported (atom [])]
-   (with-redefs [log/local-context (fn [] {})
-                 report-slow-write! (fn [& args] (swap! reported conj (vec args)))]
-     ((traced-write "cid-1" "u1" (fn [] :fast)))
-     (count @reported) := 0
-     (with-redefs [slow-write-threshold-ms 0]
-       ((traced-write "cid-1" "u1" (fn [] (Thread/sleep 5) :slow))))
-     (count @reported) := 1
-     (let [[cid uid _queue-wait write-ms] (first @reported)]
-       cid := "cid-1"
-       uid := "u1"
-       (>= write-ms 5) := true))))
+ (with-redefs [log/local-context (fn [] {})
+               report-slow-write! (spy/spy)]
+   ((traced-write "cid-1" "u1" (fn [] :fast)))
+   (spy/not-called? report-slow-write!) := true
+   (with-redefs [slow-write-threshold-ms 0]
+     ((traced-write "cid-1" "u1" (fn [] (Thread/sleep 5) :slow))))
+   ;; [cid uid queue-wait-ms write-ms]
+   (spy/calls report-slow-write!) := [["cid-1" "u1" _ _]]
+   (>= (nth (spy/last-call report-slow-write!) 3) 5) := true))
 
 ;;; Tests — send-replies! via per-user channels
 
@@ -625,16 +613,14 @@
  (reset! !connections {"cid-1" {"u1" ::sse1}})
  (reset! !user-chans {})
  (ensure-user-chan! "u1")
- (let [writes (atom [])]
-   (with-redefs [send-effect! (fn [sse-gen effect]
-                                (swap! writes conj [sse-gen effect]))]
-     (send-replies! "cid-1" "u1" ::sse1
-                    [[:patch [:div "hi"] {:d*/selector "#msgs"}]])
-     (Thread/sleep 100)
-     ;; The 15 s heartbeat loop enqueues an inert patch-signals onto every
-     ;; registered connection — drop any that lands in this window.
-     (remove #(= [:patch-signals {} {}] (second %)) @writes)
-     := [[::sse1 [:patch [:div "hi"] {:d*/selector "#msgs"}]]]))
+ (with-redefs [send-effect! (spy/spy)]
+   (send-replies! "cid-1" "u1" ::sse1
+                  [[:patch [:div "hi"] {:d*/selector "#msgs"}]])
+   (Thread/sleep 100)
+   ;; The 15 s heartbeat loop enqueues an inert patch-signals onto every
+   ;; registered connection — drop any that lands in this window.
+   (vec (remove #(= [:patch-signals {} {}] (second %)) (spy/calls send-effect!)))
+   := [[::sse1 [:patch [:div "hi"] {:d*/selector "#msgs"}]]])
  (reset! !connections {})
  (destroy-user-chan! "u1")
  (reset! !user-chans {}))
@@ -679,22 +665,20 @@
   trace rather than context-less"
  (reset! !connections {"cid-1" {"u1" ::sse1}})
  (reset! !user-chans {})
- (let [seen (atom nil)]
-   (with-redefs [send-replies! (fn [& _] (reset! seen (com.brunobonacci.mulog/local-context)))]
-     (handle-ui-event ["cid-1" "u1" [[:patch [:div "x"] {}]] {:mulog/root-trace :root-9 :turn "t9"}])
-     (:turn @seen) := "t9"
-     ;; a legacy 3-element message still works (no ctx → empty context)
-     (handle-ui-event ["cid-1" "u1" [[:patch [:div "x"] {}]]])
-     (:turn @seen) := nil))
+ ;; the stub answers with the :turn of the context it was called under
+ (with-redefs [send-replies! (spy/spy (fn [& _] (:turn (com.brunobonacci.mulog/local-context))))]
+   (handle-ui-event ["cid-1" "u1" [[:patch [:div "x"] {}]] {:mulog/root-trace :root-9 :turn "t9"}])
+   ;; a legacy 3-element message still works (no ctx → empty context)
+   (handle-ui-event ["cid-1" "u1" [[:patch [:div "x"] {}]]])
+   (spy/responses send-replies!) := ["t9" nil])
  (reset! !connections {}))
 
 (tests
  "send-ui! puts the caller's mulog context on the channel alongside the message"
- (let [captured (atom nil)]
-   (with-redefs [put! (fn [_ msg] (reset! captured msg))
-                 log/local-context (fn [] {:mulog/root-trace :root-3})]
-     (send-ui! "cid-1" "u1" [[:patch [:div] {}]])
-     @captured := ["cid-1" "u1" [[:patch [:div] {}]] {:mulog/root-trace :root-3}])))
+ (with-redefs [put! (spy/spy)
+               log/local-context (fn [] {:mulog/root-trace :root-3})]
+   (send-ui! "cid-1" "u1" [[:patch [:div] {}]])
+   (spy/calls put!) := [[_ ["cid-1" "u1" [[:patch [:div] {}]] {:mulog/root-trace :root-3}]]]))
 
 (tests
  "handle-ui-event is a no-op when user has no connection"
@@ -708,25 +692,18 @@
 (tests
  "ui-loop continues processing after handle-ui-event throws"
  (let [test-chan (chan 10)
-       call-count (atom 0)
-       processed (atom [])]
-   (let [t (Thread/startVirtualThread
-            (fn []
-              (loop []
-                (when-let [msg (<!! test-chan)]
-                  (let [handler (fn [m]
-                                  (swap! call-count inc)
-                                  (if (= @call-count 1)
-                                    (throw (ex-info "Simulated failure" {}))
-                                    (swap! processed conj m)))]
-                    (try
-                      (handler msg)
-                      (catch Throwable _e nil)))
-                  (recur)))))]
-     (put! test-chan ["cid-1" "u1" [[:patch [:div "fail"] {}]]])
-     (Thread/sleep 50)
-     (put! test-chan ["cid-2" "u2" [[:patch [:div "ok"] {}]]])
-     (Thread/sleep 50)
-     @call-count := 2
-     @processed := [["cid-2" "u2" [[:patch [:div "ok"] {}]]]]
-     (.interrupt t))))
+       fail-msg  ["cid-1" "u1" [[:patch [:div "fail"] {}]]]
+       ok-msg    ["cid-2" "u2" [[:patch [:div "ok"] {}]]]
+       handler   (spy/spy (fn [m] (when (= m fail-msg) (throw (ex-info "Simulated failure" {}))) m))
+       t         (Thread/startVirtualThread
+                  (fn []
+                    (loop []
+                      (when-let [msg (<!! test-chan)]
+                        (try (handler msg) (catch Throwable _e nil))
+                        (recur)))))]
+   (put! test-chan fail-msg)
+   (Thread/sleep 50)
+   (put! test-chan ok-msg)
+   (Thread/sleep 50)
+   (spy/calls handler) := [[fail-msg] [ok-msg]]
+   (.interrupt t)))

@@ -75,3 +75,38 @@ path lands there: a one-shot request goes `review → saving → done` in one ca
 ordered trace of action/invoke names per `[from-state event]` without running invokes. The
 [examples suite](testing.md) prefers driving machines through the pipeline, which also covers the
 render.
+
+## If you know XState
+
+The machine is an [XState](https://stately.ai/docs/xstate)-style statechart as a Clojure map.
+
+| XState | taia.ds |
+|--------|---------|
+| `states`, nested `states` | `:states`, nested `:states` |
+| `initial: 'a'` | `:initial :a`, or `[:a :b]` to start inside a nested state |
+| `on: { EVENT: 'target' }` | `:on {:EVENT :target}`; targets are relative to the parent, a vector leaves it |
+| `on: { EVENT: { target, guard, actions } }` | `{:target … :cond … :actions …}`; several options as a vector, the first passing `:cond` wins |
+| root-level `on` | machine-wide `:on` |
+| `actions` / `assign` | `:actions`, a pure `(fn [ctx event] -> ctx)` returning the new ctx |
+| `invoke: { src, onDone, onError }` | `:invoke {:src f :on-done {…} :on-error {…}}`; `src` is `(fn [ctx] -> result)` and runs synchronously inside the transition |
+| `machine.transition(state, event)` | `(transition machine ctx [:EVENT params] {:state-key :state})` |
+| `type: 'parallel'`, history states, `after`, `entry` / `exit`, actors | not supported |
+
+The wizard machine from the examples, as a state diagram (a `NEXT` whose guard fails stays put and sets `:error`; the machine-wide `RESET` returns to `details`):
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  [*] --> editing
+  state editing {
+    direction LR
+    [*] --> details
+    details --> address : NEXT [name ok]
+    address --> review : NEXT [address ok]
+    address --> details : BACK
+    review --> address : BACK
+  }
+  review --> saving : SUBMIT
+  saving --> done : save! ok / keep receipt
+  saving --> review : save! failed / keep error
+```

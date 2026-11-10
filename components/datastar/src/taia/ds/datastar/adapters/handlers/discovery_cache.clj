@@ -4,7 +4,7 @@
    WHAT IS CACHED: the resolved NAMESPACE SYMBOLS, never the vars.
 
    The expensive half of `discovery/discover-component` is the search-path scan:
-   for \"chat.chat\" the prefix `taia.ds.datastar.adapters.components` does not hold it, so
+   for \"chat.chat\" an earlier prefix such as `my.app.admin.components` does not hold it, so
    `require` throws a FileNotFoundException (stack trace and all) before the scan
    falls through to `my.app.components.chat.chat`. That answer never
    changes for a given [component-name controller-name] pair, so it is what we

@@ -14,7 +14,7 @@ moved under `taia.ds.*`.
 | `state-machines.test-helpers` | `taia.ds.state-machines.test-helpers` |
 | `logging.interface` | `taia.ds.logging.interface` |
 | `extensions.interface` | `taia.ds.extensions.interface` |
-| search path `"ds.adapters.components"` | `"taia.ds.datastar.adapters.components"` |
+| search path `"ds.adapters.components"` | gone: the library has no components of its own, so the default is `[]` and the application lists only its own prefixes |
 | vendored `/js/datastar.js`, `/js/sse-reconnect.js` | classpath `datastar/js/…`, served via `wrap-resource "datastar"` |
 
 Behaviour is unchanged. Two additions: `ctx->data-signals` and `html-response` are on the

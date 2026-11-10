@@ -8,12 +8,14 @@
                          "bases/examples/test"
                          "components/datastar/src"
                          "components/datastar/resources"
+                         "components/datastar/test"
                          "components/state-machines/src"
                          "components/logging/src"
                          "components/extensions/src"]
    :kaocha/test-paths ["bases/examples/src"
                        "bases/examples/test"
                        "components/datastar/src"
+                       "components/datastar/test"
                        "components/state-machines/src"
                        "components/logging/src"
                        "components/extensions/src"]

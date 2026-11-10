@@ -8,6 +8,15 @@ one click of this very component through the pipeline.
 
 ![One event, end to end](../img/counter-flow.gif)
 
+**State machine**
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  [*] --> displayed : INIT / seed 0
+  displayed --> displayed : INCREMENT · DECREMENT · RESET (one action each)
+```
+
 **What to look at**
 
 - The root element carries `:id component-id` and `:data-signals (ds/ctx->data-signals ctx)`. The

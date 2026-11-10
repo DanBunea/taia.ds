@@ -5,7 +5,7 @@ io.github.danbunea/taia.ds {:mvn/version "0.1.0"}
 ```
 
 Server-side UI components over [Datastar](https://data-star.dev/) SSE, LiveView-style, for Clojure/Ring.
-A component is a pure render function `(fn [ctx] -> hiccup)` plus a hierarchical state machine; the
+A component is a pure render function `(fn [ctx] -> hiccup)` plus an XState-style hierarchical state machine; the
 browser round-trips the component's signals (`:memory`, `:state`) as JSON, the server runs the
 transition and streams back patches. Long-lived components keep an SSE connection open so the server
 can push UI with `send-ui!`.
@@ -21,6 +21,58 @@ the HTML back in:
 (The source is [`docs/img/counter-flow.svg`](docs/img/counter-flow.svg), an animated SVG; `bb flow-gif`
 re-renders the GIF from it.)
 
+## If you know re-frame
+
+The shape is the same, the place is different. A re-frame app dispatches events, event handlers
+turn `db` + event into a new `db`, subscriptions feed views that render hiccup, and all of it runs
+in the browser. Here the browser only has Datastar: it POSTs the event together with the
+component's signals, the server does the rest and sends HTML back.
+
+| re-frame (browser)                  | taia.ds (server)                                    |
+|-------------------------------------|-----------------------------------------------------|
+| `app-db`                            | the component's signals (`:memory`, `:state`), round-tripped as JSON |
+| `dispatch [:increment]`             | `data-on:click="@post('.../counter1/increment')"`  |
+| `dispatch [:add-todo {:title "x"}]` | the payload rides the request, as the query string `@post('.../add-todo?title=x')` or the POST body (the signals); the action receives `[:ADD_TODO {:title "x"}]` |
+| `reg-event-db` handler              | an action in the component's state machine, `(fn [ctx event] -> ctx)` |
+| `reg-event-fx` effects              | `:invoke` for async work; effects list (`:patch`, `:patch-signals`, `:execute-script`) |
+| subscription + Reagent view         | the pure render fn `(fn [ctx] -> hiccup)`           |
+| React re-render                     | Datastar morphs the returned HTML by element id      |
+
+What you give up: no client-side state besides the signals, one round trip per event. What you
+get: no ClojureScript build, no client/server state sync, server data at hand in every handler,
+and `send-ui!` to push UI to connected clients.
+
+## If you know XState
+
+The state machine is an [XState](https://stately.ai/docs/xstate)-style statechart written as a
+Clojure map: nested `:states`, `:initial`, `:on` transitions with `:cond` guards and `:actions`,
+and `:invoke` with `:on-done` / `:on-error`. The differences: an action is a pure
+`(fn [ctx event] -> ctx)` (XState's `assign`, nothing else), an invoke runs synchronously inside
+the same request, and there are no parallel states, history states or delayed events. Each HTTP
+request is one `transition` call: the browser sends the current state and memory, the server
+sends back the new ones with the HTML.
+
+This is the wizard example's machine ([`wizard_controller.clj`](bases/examples/src/taia/ds/examples/components/wizard/wizard_controller.clj)). Left out of the picture: a `NEXT` whose guard fails stays put and sets `:error`, and a machine-wide `RESET` returns to `details`.
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  [*] --> editing
+  state editing {
+    direction LR
+    [*] --> details
+    details --> address : NEXT [name ok]
+    address --> review : NEXT [address ok]
+    address --> details : BACK
+    review --> address : BACK
+  }
+  review --> saving : SUBMIT
+  saving --> done : save! ok / keep receipt
+  saving --> review : save! failed / keep error
+```
+
+The table in [docs/state-machines.md](docs/state-machines.md#if-you-know-xstate) maps each XState
+key to its Clojure counterpart.
 
 ## What is in the jar
 
@@ -74,7 +126,7 @@ The handlers expect, on the request:
 At startup:
 
 ```clojure
-(ds/set-component-search-paths! ["my.app.components" "taia.ds.datastar.adapters.components"])
+(ds/set-component-search-paths! ["my.app.components"])   ; required: the default is empty
 (future (ds/warm-component-cache! ["home.home" "chat.chat"]))   ; optional, avoids first-request load cost
 (ds/set-observer! my-metrics-fn)                                 ; optional, see docstring
 ```
@@ -161,7 +213,7 @@ published. `build.clj` inlines the bricks into one jar whose pom lists Maven lib
 | `state-machines.*` | `taia.ds.state-machines.*` |
 | `logging.interface` | `taia.ds.logging.interface` |
 | `extensions.interface` | `taia.ds.extensions.interface` |
-| search path `"ds.adapters.components"` | `"taia.ds.datastar.adapters.components"` |
+| search path `"ds.adapters.components"` | gone: the library has no components of its own, so the default is `[]` and the application lists only its own prefixes |
 
 ## License
 

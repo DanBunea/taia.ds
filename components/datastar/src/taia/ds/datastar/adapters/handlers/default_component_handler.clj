@@ -259,21 +259,21 @@
        :counter "c1" "INCREMENT" "counter-ctrl"]]]
 
  "default-handler 3-arity: missing path-param → respond called with 400"
- (let [got (atom nil)]
-   (default-handler {:path-params {}} #(reset! got %) (fn [_] (throw (ex-info "raise" {}))))
-   @got) := {:status 400 :body "Missing component name"}
+ (let [respond (spy/spy)]
+   (default-handler {:path-params {}} respond (fn [_] (throw (ex-info "raise" {}))))
+   (spy/calls respond)) := [[{:status 400 :body "Missing component name"}]]
 
  "default-handler 3-arity: happy path → respond called with rendered response"
  (with-redefs [pipeline/process-component-event
                (fn [& _] {:html [:div "ok"]})
                ->html (fn [_] {:status 200 :body :rendered})]
-   (let [got (atom nil)]
+   (let [respond (spy/spy)]
      (default-handler {:path-params {:component "counter"
                                      :component-id "c1"
                                      :event "INCREMENT"}}
-                      #(reset! got %)
+                      respond
                       (fn [_] (throw (ex-info "raise" {}))))
-     @got)) := {:status 200 :body :rendered}
+     (spy/calls respond))) := [[{:status 200 :body :rendered}]]
 
  "default-handler 3-arity: pipeline throws inside default-component-handler
   → caught by inner try/catch and turned into a 400 (raise NOT called).
@@ -281,12 +281,10 @@
   for component errors so the client sees the diagnostic body."
  (with-redefs [pipeline/process-component-event
                (fn [& _] (throw (ex-info "boom" {})))]
-   (let [got    (atom nil)
-         raised (atom nil)]
-     (default-handler {:path-params {:component "c" :component-id "1" :event "E"}}
-                      #(reset! got %)
-                      #(reset! raised %))
-     [(:status @got)
-      (clojure.string/includes? (:body @got) "boom")
-      @raised])) := [400 true nil])
+   (let [respond (spy/spy)
+         raise   (spy/spy)]
+     (default-handler {:path-params {:component "c" :component-id "1" :event "E"}} respond raise)
+     (spy/calls respond) := [[{:status 400 :headers {"Content-Type" "text/plain; charset=utf-8"} :body _}]]
+     (clojure.string/includes? (:body (ffirst (spy/calls respond))) "boom") := true
+     (spy/not-called? raise) := true)))
 

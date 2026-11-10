@@ -3,6 +3,25 @@
 `wizard.wizard` — [`wizard.clj`](../../bases/examples/src/taia/ds/examples/components/wizard/wizard.clj),
 [`wizard_controller.clj`](../../bases/examples/src/taia/ds/examples/components/wizard/wizard_controller.clj).
 
+**State machine**
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  [*] --> editing
+  state editing {
+    direction LR
+    [*] --> details
+    details --> address : NEXT [name ok]
+    address --> review : NEXT [address ok]
+    address --> details : BACK
+    review --> address : BACK
+  }
+  review --> saving : SUBMIT
+  saving --> done : save! ok / keep receipt
+  saving --> review : save! failed / keep error
+```
+
 **What to look at**
 
 - `:initial [:editing :details]` — a nested start. The state is a vector all the way through: in

@@ -6,6 +6,15 @@
 A connected component. The shell mounts it with `@get('/ds/nds-connect/…/init')`, so the INIT
 render arrives on an SSE stream that stays open.
 
+**State machine**
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  [*] --> displayed : INIT / read the server count
+  displayed --> displayed : INCREMENT · RESET (change the server count, push to everyone)
+```
+
 **What to look at**
 
 - No `data-signals` on the root: the count is an atom on the server, put into top-level ctx by the

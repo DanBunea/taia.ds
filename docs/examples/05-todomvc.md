@@ -5,6 +5,15 @@
 
 Everything so far, together, in `:memory` only.
 
+**State machine**
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  [*] --> displayed : INIT / seed
+  displayed --> displayed : ADD · TOGGLE · DESTROY · TOGGLE_ALL · CLEAR_COMPLETED · FILTER · EDIT · SAVE_EDIT · CANCEL_EDIT
+```
+
 **What to look at**
 
 - Event params on the query string: `toggle?id=3`, `filter?filter=active`. They arrive as
