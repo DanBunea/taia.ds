@@ -4,7 +4,7 @@ import { installConsoleGuard } from './helpers/console-guard';
 installConsoleGuard();
 
 async function reachReview(page, name: string) {
-  await page.goto('/examples/wizard');
+  await page.goto('/ds/nds/home.home/home/init?example=wizard');
   await expect(page.getByTestId('state')).toHaveText('[:editing :details]');
   await page.locator('#wizard1-name').fill(name);
   await page.getByTestId('next').click();
@@ -16,7 +16,7 @@ async function reachReview(page, name: string) {
 }
 
 test('wizard: a guard keeps you on the step with an error', async ({ page }) => {
-  await page.goto('/examples/wizard');
+  await page.goto('/ds/nds/home.home/home/init?example=wizard');
   await page.getByTestId('next').click();
   await expect(page.getByTestId('error')).toHaveText('Name is required');
   await expect(page.getByTestId('state')).toHaveText('[:editing :details]');

@@ -6,7 +6,7 @@ installConsoleGuard();
 // The server runs with TAIA_EXAMPLES_FAKE_WEATHER=1 (see scripts/e2e.clj):
 // lookups answer from a table after ~700ms, so the loading states are visible.
 test('weather: INIT paints a skeleton, the lazy LOAD fetches, searches show the in-flight indicator', async ({ page }) => {
-  await page.goto('/examples/weather');
+  await page.goto('/ds/nds/home.home/home/init?example=weather');
 
   // 1. the skeleton is the first paint; the fetch happens on the LOAD it fires
   await expect(page.getByTestId('loading')).toBeVisible();
@@ -30,7 +30,7 @@ test('weather: INIT paints a skeleton, the lazy LOAD fetches, searches show the 
 });
 
 test('weather: a refused lookup lands in :failed and a new search recovers', async ({ page }) => {
-  await page.goto('/examples/weather');
+  await page.goto('/ds/nds/home.home/home/init?example=weather');
   await expect(page.getByTestId('temperature')).toBeVisible({ timeout: 10_000 });
 
   await page.getByTestId('city').fill('Nowhere-in-particular');

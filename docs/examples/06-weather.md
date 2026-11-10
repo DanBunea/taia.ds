@@ -44,7 +44,7 @@ params, so `capture-city` stores it in `:memory` in the transition's `:actions` 
 **Errors as data.** `weather-api` throws `ex-info` with a user-facing `:message` for an unknown
 place or a failing service; `:on-error` puts it in ctx and the render shows it.
 
-**Try it**: `bb dev`, open `/examples/weather`, type a city, try a nonsense one. The e2e run sets
+**Try it**: `bb dev`, open the weather page (`?example=weather` on the URL it prints), type a city, try a nonsense one. The e2e run sets
 `TAIA_EXAMPLES_FAKE_WEATHER=1`, which answers four cities from a table after 700 ms instead of
 calling the network.
 

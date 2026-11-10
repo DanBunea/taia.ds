@@ -1,6 +1,6 @@
 {:tasks
  {:init (println "taia.ds")
-  dev          {:doc "Start the examples app on http://localhost:7788 (nREPL 7789)"
+  dev          {:doc "Start the examples app on port 7788 and print its URL (nREPL 7789)"
                 :task (clojure "-M:dev -m dev")}
   test         {:doc "Run the unit tests (Kaocha + RCF inline tests, examples included)"
                 :task (clojure "-M:dev:test")}

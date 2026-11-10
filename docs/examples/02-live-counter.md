@@ -3,7 +3,7 @@
 `live.live-counter` — [`live_counter.clj`](../../bases/examples/src/taia/ds/examples/components/live/live_counter.clj),
 [`live_counter_controller.clj`](../../bases/examples/src/taia/ds/examples/components/live/live_counter_controller.clj).
 
-A connected component. The shell mounts it with `@get('/ds/nds-connect/…/init')`, so the INIT
+A connected component. The home page mounts it with `@get('/ds/nds-connect/…/init')`, so the INIT
 render arrives on an SSE stream that stays open.
 
 **State machine**
@@ -26,7 +26,7 @@ stateDiagram-v2
   users by that query param — stand-in for real authentication, which would set
   `[:params :logged-user]` from a session.
 
-**Try it**: open `/examples/live-counter?user=alice` and `/examples/live-counter?user=bob` side by
+**Try it**: open the live-counter page as `?example=live-counter&user=alice` and `…&user=bob` side by
 side; click in one, watch the other. From a REPL on port 7789:
 
 ```clojure

@@ -21,7 +21,7 @@
    [ring.middleware.params :refer [wrap-params]]
    [ring.middleware.resource :refer [wrap-resource]]
    [taia.ds.datastar.interface :as ds]
-   [taia.ds.examples.layout :as layout]))
+   [taia.ds.examples.components.home.home :as home]))
 
 (def search-paths
   "Where discovery looks for `<group>.<name>` components. Applications list
@@ -42,34 +42,12 @@
       ([req] (handler (with-user req)))
       ([req respond raise] (handler (with-user req) respond raise)))))
 
-(defn- sync->async
-  "Lifts a 1-arity handler to both arities — async Jetty calls the 3-arity,
-   and a sync-only handler there never completes the request."
-  [f]
-  (fn
-    ([req] (f req))
-    ([req respond raise]
-     (try (respond (f req))
-          (catch Throwable t (raise t))))))
-
 (def ^:private path-params
   {:component :string :component-id :string :event :string})
 
-(defn- index-handler [_]
-  (ds/html-response (layout/index)))
-
-(defn- example-handler [req]
-  (let [slug (get-in req [:path-params :example])]
-    (if-let [example (layout/find-example slug)]
-      (ds/html-response (layout/example-page example (user-of req)))
-      (assoc (ds/html-response (layout/not-found slug)) :status 404))))
-
 (defn router []
   (reitit/router
-   [["/" {:get {:handler (sync->async index-handler)}}]
-    ["/examples/:example" {:get {:parameters {:path {:example :string}}
-                                 :handler    (sync->async example-handler)}}]
-    ["/ds"
+   [["/ds"
      ["/nds"
       ["/:component/:component-id/:controller/:event"
        {:parameters {:path (assoc path-params :controller :string)}
@@ -107,9 +85,13 @@
     (reset! !server nil)))
 
 (defn start!
-  "Starts the examples app on `port` (async Jetty). Idempotent."
+  "Starts the examples app on `port` (async Jetty) and returns the URL of the
+   examples page. There is no route for it: the page is the `home.home`
+   component, and a GET on its own INIT route renders it. Idempotent."
   [port]
   (stop!)
   (ds/set-component-search-paths! search-paths)
   (reset! !server (jetty/run-jetty (app) {:port port :join? false :async? true}))
-  @!server)
+  (let [url (str "http://localhost:" port home/url)]
+    (println "taia.ds examples:" url)
+    url))

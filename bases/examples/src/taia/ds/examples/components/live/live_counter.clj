@@ -17,7 +17,7 @@
    [clojure.string :as str]))
 
 (defn- post [cid event]
-  ;; `$user` is the page-level signal the shell seeds; every request carries it
+  ;; `$user` is the page-level signal the home page seeds; every request carries it
   ;; as ?user= so the examples app can tell the tabs apart.
   (str "@post('/ds/nds/live.live-counter/" cid "/" event "?user='+$user)"))
 

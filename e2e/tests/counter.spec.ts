@@ -4,7 +4,7 @@ import { installConsoleGuard } from './helpers/console-guard';
 installConsoleGuard();
 
 test('counter: one-shot events round-trip :memory; a reload starts over', async ({ page }) => {
-  await page.goto('/examples/counter');
+  await page.goto('/ds/nds/home.home/home/init?example=counter');
   const count = page.getByTestId('count');
   await expect(count).toHaveText('0');
 

@@ -17,6 +17,22 @@
    [taia.ds.examples.test-support :as ts :refer [run step testid-text]]))
 
 (tests
+ "0 home: the page is a component — INIT with no example is the index"
+ (def p0 (run "home.home" "home" {} "init"))
+ p0 := {:memory {:user "tester"} :state :index :html _ :ctx _}
+ (count (ts/extract-post-urls (:html p0))) := 0
+
+ "0 home: a known example lands in :example; the resolved entry is derived (ctx :selected), the name is remembered (memory); the mount fires the child's INIT with the page-level user signal"
+ (def p1 (run "home.home" "home" {:params {:example "counter"}} "init"))
+ p1 := {:memory {:user "tester" :example "counter"} :state :example :html _ :ctx _}
+ (select-keys (:selected (:ctx p1)) [:cid :component]) := {:cid "counter1" :component "basics.counter"}
+ (ts/extract-post-urls (:html p1)) := ["/ds/nds/basics.counter/counter1/init?user="]
+ (str/includes? (testid-text (:html p1) "home-inspect") ":state :example") := true
+
+ "0 home: an unknown example lands in :not-found"
+ (run "home.home" "home" {:params {:example "nope"}} "init") := {:memory {:user "tester" :example "nope"} :state :not-found :html _ :ctx _})
+
+(tests
  "1 counter: INIT seeds 0, increments accumulate through the round-tripped store"
  (def c0 (run "basics.counter" "counter1" {} "init"))
  c0 := {:memory {:count 0} :state :displayed :html _ :ctx _}

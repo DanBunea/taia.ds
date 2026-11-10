@@ -4,7 +4,7 @@ import { installConsoleGuard } from './helpers/console-guard';
 installConsoleGuard();
 
 test('todomvc: Enter adds, checkboxes toggle via query params, filters hide', async ({ page }) => {
-  await page.goto('/examples/todomvc');
+  await page.goto('/ds/nds/home.home/home/init?example=todomvc');
   const input = page.getByTestId('new-todo');
   await expect(input).toBeVisible();
 
@@ -38,7 +38,7 @@ test('todomvc: Enter adds, checkboxes toggle via query params, filters hide', as
 });
 
 test('todomvc: double-click edits, Enter saves, Escape cancels', async ({ page }) => {
-  await page.goto('/examples/todomvc');
+  await page.goto('/ds/nds/home.home/home/init?example=todomvc');
   const input = page.getByTestId('new-todo');
   await input.fill('draft');
   await input.press('Enter');

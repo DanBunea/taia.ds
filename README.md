@@ -91,7 +91,7 @@ are no-ops unless you call `(hyperfiddle.rcf/enable!)`.
 
 - [Getting started](docs/getting-started.md) · [Components](docs/components.md) · [State machines](docs/state-machines.md) · [Connected components and push](docs/connected-components.md)
 - [Testing components](docs/testing.md) · [Gotchas](docs/gotchas.md) (read this one) · [Migration](docs/migration.md) · [API index](docs/api.md)
-- [Examples](docs/examples/README.md): six components in `bases/examples`, one concept each, each with a walkthrough and an executable spec. `bb dev` serves them on http://localhost:7788/.
+- [Examples](docs/examples/README.md): six components in `bases/examples`, one concept each, each with a walkthrough and an executable spec. `bb dev` serves them and prints the URL (the page is itself a component).
 
 The same articles render on cljdoc once the jar is on Clojars (`doc/cljdoc.edn`).
 
@@ -186,7 +186,7 @@ bb test          # Kaocha + RCF inline tests (clojure -M:dev:test)
 bb e2e-test      # Playwright against the examples app (needs Node >= 18); bb e2e-test <spec> [--headed]
 bb check         # poly check
 bb info          # poly info
-bb dev           # examples app: http://localhost:7788/ (nREPL on 7789)
+bb dev           # examples app on port 7788, prints the examples URL (nREPL on 7789)
 bb api-index     # regenerate docs/api.md from the interface namespaces
 bb format        # cljfmt
 bb jar           # target/taia.ds-<version>.jar  (version = 0.1.<git commit count>, or :version "x.y.z")

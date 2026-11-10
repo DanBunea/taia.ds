@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Examples: the examples home page is now itself a component (`home.home`, with a controller). There is no page route any more: a GET on `/ds/nds/home.home/home/init?example=<name>` renders it, and `start!` returns that URL. `layout.clj` → `components/home/` (the registry lives in the controller).
 - README: "If you know re-frame" and "If you know XState" sections; a Mermaid state diagram in every example walkthrough and in `docs/state-machines.md`.
 - The `datastar` brick no longer ships example components: `adapters.components.counter.*` and `html-page` are gone from the jar. The discovery tests moved to the brick's `test` dir and define the component they resolve in memory.
 - The default component search path is now `[]` (was `["taia.ds.datastar.adapters.components"]`, which named nothing). Applications must call `set-component-search-paths!` at startup — they already had to.

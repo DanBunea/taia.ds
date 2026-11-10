@@ -108,8 +108,8 @@ both.
 ```
 
 Runs the pipeline in process (discovery → transition → render) so `GET /` can serve a page
-component directly instead of redirecting into `/ds/…`. The examples app does this for its
-shell pages.
+component directly instead of redirecting into `/ds/…`. (The examples app goes one step further:
+its home page is a component reached by a GET on its own INIT route, so it needs no page route.)
 
 ## Discovery and the first request
 

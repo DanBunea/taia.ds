@@ -10,8 +10,8 @@ test('live counter: a change in one user\'s tab is pushed to the other', async (
   const aliceErrors = collectConsoleErrors(alice);
   const bobErrors = collectConsoleErrors(bob);
 
-  await alice.goto('/examples/live-counter?user=alice');
-  await bob.goto('/examples/live-counter?user=bob');
+  await alice.goto('/ds/nds/home.home/home/init?example=live-counter&user=alice');
+  await bob.goto('/ds/nds/home.home/home/init?example=live-counter&user=bob');
   // the count arrives over the stream (INIT render), so visible == connected
   await expect(alice.getByTestId('count')).toBeVisible();
   await expect(bob.getByTestId('count')).toBeVisible();
