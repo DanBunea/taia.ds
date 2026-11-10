@@ -32,11 +32,6 @@
 
 [components/logging/src/taia/ds/logging/interface.cljc](../components/logging/src/taia/ds/logging/interface.cljc)
 
-- `debug [prefix & args]` — Prints prefix and args to stdout. Quick console debug helper.
-- `log-> [prefix ctx & args]` — Thread-first debug tap: tap>s [prefix ctx & args] and returns ctx unchanged.
-- `log->> [ctx prefix]` — Thread-last debug tap: tap>s and prints [prefix ctx], returns ctx unchanged.
-- `dbg [ctx prefix] [ctx prefix func]` — (dbg {:a 1 :b 2} 101 #(select-keys % [:a]))
-- `levels (def)` — Log-level ordering (ascending): :verbose < :debug < :info < :warn.
 - `set-log-level! [level]` — Sets the global log level. Called once at startup from config.
 - `log-level []` — Returns the current global log level.
 - `trace-enabled? [level min-level]` — Returns true when trace at level should be emitted given min-level.

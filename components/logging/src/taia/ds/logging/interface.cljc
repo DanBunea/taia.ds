@@ -1,44 +1,10 @@
 (ns taia.ds.logging.interface
   (:require
-   [clojure.pprint :refer [pprint]]
    [hyperfiddle.rcf :refer [tests]]
    #?(:clj [clojure.core :as core])
    #?(:clj [com.brunobonacci.mulog :as u])))
 
-(defn debug
-  "Prints prefix and args to stdout. Quick console debug helper."
-  [prefix & args]
-  (println prefix args))
-
-(defn log->
-  "Thread-first debug tap: tap>s [prefix ctx & args] and returns ctx unchanged."
-  [prefix ctx & args]
-  (tap> (into [] (concat [prefix ctx] args)))
-  #_(prn (into [] (concat [prefix ctx] args)))
-  ctx)
-
-(defn log->>
-  "Thread-last debug tap: tap>s and prints [prefix ctx], returns ctx unchanged."
-  [ctx prefix]
-  (tap> [prefix ctx])
-  (println prefix ctx)
-  ctx)
-
-(defn dbg
-  " (dbg {:a 1 :b 2} 101 #(select-keys % [:a]))
-    =>
-    ; 101 {:a 1}
-    {:a 1, :b 2}
-   
-   "
-  ([ctx prefix]
-   (dbg ctx prefix identity))
-  ([ctx prefix func]
-   (println prefix)
-   (pprint (func ctx))
-   ctx))
-
-#?(:clj (def levels
+#?(:clj (def ^:private levels
           "Log-level ordering (ascending): :verbose < :debug < :info < :warn."
           {:verbose 0 :debug 1 :info 2 :warn 3}))
 
@@ -240,12 +206,3 @@
        out (safe-for-log {:big big})]
    (<= (count out) (+ safe-for-log-max-chars 32))           := true
    (boolean (re-find #"…<truncated>" out))                  := true))
-
-(comment
-  (log-> :a {:a 1} 23)
-  (log->> {:a 1} :here)
-
-  (-> {:a 1 :b 2}
-      (dbg 101 #(select-keys % [:a]))
-      ;; (update :a inc)
-      ))
