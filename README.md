@@ -97,6 +97,14 @@ are no-ops unless you call `(hyperfiddle.rcf/enable!)`.
 
 The same articles render on cljdoc once the jar is on Clojars (`doc/cljdoc.edn`).
 
+## Projects using taia.ds
+
+- [TodoMVC-AI-Agent](https://github.com/DanBunea/TodoMVC-AI-Agent): the classic TodoMVC with an AI agent that
+  manages the same list through conversation. The page is a `taia.ds` component with its state machine; the
+  request pipeline, SSE push and `datastar.js` come from the library.
+
+  [![TodoMVC AI Agent demo](https://img.youtube.com/vi/8aHSc9F6aws/maxresdefault.jpg)](https://youtu.be/8aHSc9F6aws)
+
 ## Wiring it into an application
 
 The library ships no routes: your base owns them. Mount the two handlers on these three shapes
