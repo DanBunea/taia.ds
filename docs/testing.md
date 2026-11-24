@@ -34,7 +34,24 @@ strings. Copy the file; it is forty lines.
 ```
 
 [`examples_test.clj`](../bases/examples/test/taia/ds/examples/examples_test.clj) is the complete
-executable spec of the five examples and the best place to see the style.
+executable spec of the examples and the best place to see the style.
+
+## Driving a connected component's flow
+
+A connected component keeps its ctx in its flow between events, so `run`/`step` (which rebuild the
+ctx from the request every time) cannot follow it. Start the flow headless instead:
+
+```clojure
+(def cf (ds/start-component-flow! {:component-name "live.countdown" :component-id "countdown1"
+                                   :keep-ctx? true}))
+(ds/run-flow-event! cf req "init")     ; a browser event: req carries signals and params
+(ds/run-flow-event! cf req "start")
+(ds/run-flow-event! cf nil "tick")     ; a server event, like send-event!: no request at all
+(ds/stop-component-flow! cf)
+```
+
+`test_support.clj` wraps these as `connect`, `flow-event` and `server-event`; block 7 of
+`examples_test.clj` drives the countdown with them.
 
 ## Testing the machine alone
 

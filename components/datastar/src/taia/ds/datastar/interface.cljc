@@ -2,9 +2,9 @@
   (:require
    [taia.ds.datastar.adapters.handlers.default-component-handler :as ce]
    [taia.ds.datastar.adapters.handlers.connected-component-handler :as cce]
+   #?(:clj [taia.ds.datastar.adapters.flow :as flow])
    #?(:clj [taia.ds.datastar.adapters.handlers.discovery :as discovery])
    #?(:clj [taia.ds.datastar.adapters.handlers.observer :as observer])
-   #?(:clj [taia.ds.datastar.adapters.handlers.pipeline :as pipeline])
    #?(:clj [taia.ds.datastar.adapters.handlers.response :as response])
    [taia.ds.datastar.adapters.handlers.context :as context]))
 
@@ -18,6 +18,15 @@
   "Async Ring handler that opens an SSE connection for a connected component
    and registers it so `send-ui!` can push updates to that client."
   #'cce/handler-connected-component-connect)
+
+(def handler-connected-component-event
+  "Ring handler (both arities) for an event POSTed to a connected component's
+   path (/ds/nds-connect/<component>/<component-id>/<event>). The event runs
+   through the component flow that lives with the user's open stream, so it
+   transitions from the ctx that flow holds, and the POST is answered with the
+   render like a default component's. Without an open stream it falls back to
+   `handler-component-event`."
+  #'cce/handler-connected-component-event)
 
 #?(:clj
    (defn set-observer!
@@ -50,12 +59,14 @@
 
 #?(:clj
    (defn process-component-event
-     "Runs the component pipeline in-process (discovery → FSM transition →
-      render) and returns the result map with :html (hiccup or effects list).
+     "Runs one event through a per-request component flow in-process
+      (discovery → :controller FSM transition → :view render) and returns the
+      result map with :html (hiccup or effects list) and :ctx. Throws what a
+      step threw, or an ex-info after the event timeout.
       Lets a caller serve a component's full-page render at a canonical URL
       (e.g. GET /es → site.landing INIT) instead of redirecting into /ds/…"
      [req component-name component-id event-name controller-name]
-     (pipeline/process-component-event req component-name component-id event-name controller-name)))
+     (flow/process-component-event req component-name component-id event-name controller-name)))
 
 #?(:clj
    (defn send-ui!
@@ -63,6 +74,51 @@
       the SSE client identified by component-id and user-id."
      [component-id user-id component-responses]
      (cce/send-ui! component-id user-id component-responses)))
+
+#?(:clj
+   (defn start-component-flow!
+     "Starts a component's flow headless — no SSE stream: the machine and
+      render fn are resolved now, and with `:keep-ctx? true` the :controller
+      holds the ctx between events, like a connected component's flow. Drive
+      it with `run-flow-event!`; stop it with `stop-component-flow!`. Useful to
+      test a connected component in process.
+      opts: {:component-name :component-id :controller-name :keep-ctx?}"
+     [opts]
+     (flow/start-component-flow! opts)))
+
+#?(:clj
+   (defn run-flow-event!
+     "Runs one event through a flow from `start-component-flow!` and returns
+      its result map (:ctx, :html, …). `req` carries the client signals and
+      params like a request would; nil makes it a server event."
+     [component-flow req event-name]
+     (flow/run-event! component-flow req event-name)))
+
+#?(:clj
+   (defn stop-component-flow!
+     "Stops a flow from `start-component-flow!`."
+     [component-flow]
+     (flow/stop-component-flow! component-flow)))
+
+#?(:clj
+   (defn connections
+     "The open SSE streams, as {component-id [user-id …]}: who `send-ui!` and
+      `send-event!` can reach right now. When `send-event!` returns false,
+      look here — the stream is registered under the `:user/id` of the
+      request that opened it."
+     []
+     (cce/connections)))
+
+#?(:clj
+   (defn send-event!
+     "Sends a server event to the connected component (component-id, user-id):
+      it runs through that connection's component flow — transitioning from
+      the ctx the flow holds — and the render is pushed down the open SSE
+      stream. `event-name` is case-insensitive like a URL event; `params` is
+      the event's params map. Returns true when queued, false when that user
+      has no open connection under component-id."
+     [component-id user-id event-name params]
+     (cce/send-event! component-id user-id event-name params)))
 
 (defn ctx->data-signals
   "The `data-signals` attribute value for a component's root element: the

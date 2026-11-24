@@ -1,13 +1,23 @@
 (ns taia.ds.datastar.adapters.handlers.connected-component-handler
   "Handler for establishing persistent SSE connections to component instances.
-   Manages a `!connections` atom that tracks open SSE connections per
-   (component, component-id), enabling future server-push to connected clients.
-   On connection open, runs the component pipeline and sends the initial render via SSE."
+   Manages a `!connections` atom that tracks, per (component-id, user-id), the
+   open SSE stream AND the component flow (`taia.ds.datastar.adapters.flow`)
+   that lives as long as it.
+
+   On connection open, the flow is started (holding the ctx between events),
+   the INIT event runs through it, and its render is sent down the stream.
+   Afterwards:
+   - a POST on the same path (`handler-connected-component-event`) runs through
+     the SAME flow and answers with the render, like a default component;
+   - `send-event!` puts a server event on the flow, and its render is pushed
+     down the open stream."
   (:require
    [taia.ds.logging.interface :as log]
+   [taia.ds.datastar.adapters.flow :as flow]
+   [taia.ds.datastar.adapters.handlers.default-component-handler :as default-handler]
+   [taia.ds.datastar.adapters.handlers.discovery :as discovery]
    [taia.ds.datastar.adapters.handlers.observer :as observer]
-   [taia.ds.datastar.adapters.handlers.pipeline :as pipeline]
-   [taia.ds.datastar.adapters.handlers.response :refer [send-effect!]]
+   [taia.ds.datastar.adapters.handlers.response :refer [send-effect! render-response error-response]]
    [starfederation.datastar.clojure.adapter.ring :refer [->sse-response on-open on-close]]
    [starfederation.datastar.clojure.api :as d*]
    [dev.onionpancakes.chassis.compiler :as hc]
@@ -16,8 +26,20 @@
    [hyperfiddle.rcf :refer [tests]]
    [spy.core :as spy]))
 
-;; {component-id {user-id sse-gen }}
+;; {component-id {user-id {:sse-gen sse-gen :flow component-flow}}}
+;; :flow is nil for a stream registered without one (tests, legacy callers).
 (def !connections (atom {}))
+
+(defn- sse-gen-of
+  "The sse-gen registered under (component-id, user-id), or nil."
+  [component-id user-id]
+  (get-in @!connections [component-id user-id :sse-gen]))
+
+(defn- stop-flow-of!
+  "Stops the flow of a registry entry, if it has one."
+  [{:keys [flow]}]
+  (when flow
+    (flow/stop-component-flow! flow)))
 
 ;; Channel for pushing UI updates after the initial SSE response.
 ;; Message format: [component-id user-id [[:patch/:broadcast [:div ...] opts] ...]]
@@ -80,16 +102,23 @@
 
 (defn- remove-connection-if-current!
   "Removes the (component-id, user-id) registry entry only if it still points
-   at sse-gen. A client reconnect re-registers under the same key, so a late
-   close/write-failure of the OLD stream must not evict the NEW live one.
+   at sse-gen, and stops that entry's flow. A client reconnect re-registers
+   under the same key, so a late close/write-failure of the OLD stream must
+   not evict (or stop the flow of) the NEW live one. Whoever removes the entry
+   stops its flow — a stale-write drop as much as an on-close — so a flow
+   never outlives its registry entry.
    Returns true when the entry was removed."
   [component-id user-id sse-gen]
   (let [[old _new] (swap-vals! !connections
                                (fn [m]
-                                 (if (identical? (get-in m [component-id user-id]) sse-gen)
+                                 (if (identical? (get-in m [component-id user-id :sse-gen]) sse-gen)
                                    (update m component-id dissoc user-id)
-                                   m)))]
-    (identical? (get-in old [component-id user-id]) sse-gen)))
+                                   m)))
+        entry      (get-in old [component-id user-id])
+        removed?   (identical? (:sse-gen entry) sse-gen)]
+    (when removed?
+      (stop-flow-of! entry))
+    removed?))
 
 (def slow-write-threshold-ms
   "A context-less write (heartbeat) slower than this, or one that waited longer
@@ -150,10 +179,22 @@
                  nil)
       (remove-connection-if-current! component-id user-id sse-gen))))
 
-(defn register-connection! [component component-id sse-gen logged-user]
-  (let [user-id (:user/id logged-user)]
-    (ensure-user-chan! user-id)
-    (swap! !connections assoc-in [component-id user-id] sse-gen)))
+(defn register-connection!
+  "Registers sse-gen (and its component flow, when given) under
+   (component-id, user-id). A reconnect replaces the previous entry; the
+   replaced entry's flow is stopped here, since its stream's late on-close
+   will no longer match the registry."
+  ([component component-id sse-gen logged-user]
+   (register-connection! component component-id sse-gen logged-user nil))
+  ([_component component-id sse-gen logged-user component-flow]
+   (let [user-id (:user/id logged-user)
+         _       (ensure-user-chan! user-id)
+         [old _] (swap-vals! !connections assoc-in [component-id user-id]
+                             {:sse-gen sse-gen :flow component-flow})
+         prior   (get-in old [component-id user-id])]
+     (when (and prior (not (identical? (:flow prior) component-flow)))
+       (stop-flow-of! prior))
+     nil)))
 
 (defn unregister-connection! [component component-id sse-gen logged-user]
   (let [user-id (:user/id logged-user)]
@@ -191,7 +232,8 @@
 
         :broadcast
         (let [[elements options] effect-args
-              user-sse-pairs (seq (get @!connections component-id))]
+              user-sse-pairs (map (fn [[uid entry]] [uid (:sse-gen entry)])
+                                  (get @!connections component-id))]
           (doseq [[uid usse-gen] user-sse-pairs]
             (enqueue-write! component-id uid usse-gen
                             (fn []
@@ -221,7 +263,7 @@
    re-established here so the per-write `::sse-write` spans nest under the
    caller's trace (the agent turn) instead of being context-less."
   [[component-id user-id component-responses mulog-ctx]]
-  (when-let [sse-gen (get-in @!connections [component-id user-id])]
+  (when-let [sse-gen (sse-gen-of component-id user-id)]
     (log/with-context (or mulog-ctx {})
       (send-replies! component-id user-id sse-gen component-responses))))
 
@@ -296,6 +338,115 @@
    (spy/called-once? d*/patch-elements!) := true
    (spy/not-called? send-effect!) := true))
 
+;;; The connection's component flow
+
+(defn- handle-flow-render!
+  "What the drain loop does with one render from a connection's flow:
+   - it carries a `:reply` → delivered to the caller waiting on it (the
+     connect's INIT, a POST); that caller answers with it, so it is NOT
+     pushed down the stream;
+   - an error (`flow/error-of`) without a reply (a server event failed) → logged; the
+     flow stays up;
+   - otherwise (a server `send-event!`) → enqueued on the user's ordered write
+     channel, under the sender's trace."
+  [component-id user-id sse-gen {:keys [reply html mulog-ctx] :as render}]
+  (cond
+    reply
+    (deliver reply render)
+
+    (flow/error-of render)
+    (log/with-context (or mulog-ctx {})
+      (log/trace ::flow-event-error
+                 [:component-id component-id
+                  :user-id user-id
+                  :error (ex-message (flow/error-of render))]
+                 nil))
+
+    :else
+    (log/with-context (or mulog-ctx {})
+      (enqueue-write! component-id user-id sse-gen
+                      (fn []
+                        (try
+                          (send-html-to-sse! {:sse-gen sse-gen :html html})
+                          (catch Throwable e
+                            (log/trace ::flow-write-failed
+                                       [:component-id component-id
+                                        :user-id user-id
+                                        :error (.getMessage e)]
+                                       nil)
+                            (remove-connection-if-current! component-id user-id sse-gen))))))))
+
+(defn- start-drain!
+  "The single consumer of a connection flow's out-chan, on a virtual thread.
+   Ends when the flow is stopped (its out-chan closes)."
+  [component-id user-id sse-gen {:keys [out-chan]}]
+  (Thread/startVirtualThread
+   (fn []
+     (loop []
+       (when-some [render (<!! out-chan)]
+         (try
+           (handle-flow-render! component-id user-id sse-gen render)
+           (catch Throwable e
+             (log/trace ::flow-drain-error
+                        [:component-id component-id :user-id user-id :error (.getMessage e)]
+                        nil)))
+         (recur))))))
+
+(defn- run-through-flow!
+  "Puts the request's event on the connection flow's in-chan with a reply
+   promise and waits for its render (see `flow/await-render`). Returns nil
+   when the flow's in-chan is already closed."
+  [{:keys [in-chan]} req component component-id event-name]
+  (let [reply (promise)]
+    (when (put! in-chan (assoc (flow/event-msg req component-id event-name) :reply reply))
+      (flow/await-render reply component event-name))))
+
+(defn- open-flow!
+  "on-open's work: start the component's long-lived flow, register it with
+   the stream, start draining it, then run the connect's event (INIT) through
+   it and send that render down the stream."
+  [req component component-id event-name sse-gen logged-user]
+  (let [user-id (:user/id logged-user)
+        cf      (flow/start-component-flow! {:component-name component
+                                             :component-id   component-id
+                                             :keep-ctx?      true})]
+    (log/trace
+     ::connection-opened
+     [:component component
+      :component-id component-id
+      :event event-name]
+     (register-connection! component component-id sse-gen logged-user cf))
+    (start-drain! component-id user-id sse-gen cf)
+    (some-> (run-through-flow! cf req component component-id event-name)
+            (assoc :sse-gen sse-gen)
+            send-html-to-sse!)))
+
+(defn connections
+  "The open streams, as {component-id [user-id …]} — who `send-ui!` and
+   `send-event!` can reach right now. For the REPL and diagnostics."
+  []
+  (into {}
+        (keep (fn [[component-id users]]
+                (when (seq users) [component-id (vec (keys users))])))
+        @!connections))
+
+(tests
+ "connections: component-id → the user-ids with an open stream; empty ids dropped"
+ (with-redefs [!connections (atom {"cd1" {"alice" {:sse-gen ::a} "bob" {:sse-gen ::b}}
+                                   "gone" {}})]
+   (update (connections) "cd1" sort)) := {"cd1" ["alice" "bob"]})
+
+(defn send-event!
+  "Puts a server event on the flow of the connection (component-id, user-id):
+   it transitions from the ctx the flow holds, and its render is pushed down
+   that connection's stream. The caller's trace rides along. Returns true when
+   the event was queued, false when there is no open connection with a flow."
+  [component-id user-id event-name params]
+  (if-let [{:keys [in-chan]} (get-in @!connections [component-id user-id :flow])]
+    (put! in-chan {:event     [event-name (or params {})]
+                   :mulog-ctx (log/local-context)})
+    false))
+
 ;;; SSE connect handler
 
 (defn handler-connected-component-connect [req respond _raise]
@@ -316,24 +467,12 @@
        on-open
        (fn [sse-gen]
          (let [started (System/nanoTime)]
-           (log/trace
-            ::connection-opened
-            [:component component
-             :component-id component-id
-             :event event-name]
-            (register-connection! component component-id sse-gen logged-user))
-
            (try
              ;; the initial render is this route's latency (the stream itself
              ;; lives for minutes)
              (observer/observe-event!
               :nds-connect component nil event-name
-              #(-> req
-                   (assoc :sse-gen sse-gen)
-                   (pipeline/process-component-event component component-id event-name nil)
-                   (assoc :sse-gen sse-gen)
-                   (assoc :component-id component-id)
-                   (send-html-to-sse!)))
+              #(open-flow! req component component-id event-name sse-gen logged-user))
              (finally
                ;; reported AFTER the pipeline so discovery has resolved the
                ;; label; a stream that already closed is opened+closed at once
@@ -352,6 +491,43 @@
            (when (map? token)
              (observer/connection-closed! token))))}))))
 
+;;; Events for a connected component (POST on the connect path)
+
+(defn- connected-event-response
+  "Runs a browser event through the connection's flow — so it transitions from
+   the ctx the flow holds — and answers with the render exactly like a default
+   component does (HTML, or a one-shot SSE for an effects list). Without an
+   open connection (stream closed, client reconnecting) it falls back to the
+   default one-shot handler, so the click still gets a render."
+  [req]
+  (let [component    (keyword (get-in req [:path-params :component]))
+        component-id (get-in req [:path-params :component-id])
+        event-name   (get-in req [:path-params :event])
+        user-id      (get-in req [:params :logged-user :user/id])
+        cf           (get-in @!connections [component-id user-id :flow])
+        result       (when cf
+                       (observer/observe-event!
+                        :nds-connect-event component nil event-name
+                        (fn []
+                          (try
+                            (some-> (run-through-flow! cf req component component-id event-name)
+                                    (assoc :request req)
+                                    render-response)
+                            (catch Exception e
+                              (error-response e component component-id event-name nil))))))]
+    (or result (default-handler/default-handler req))))
+
+(defn handler-connected-component-event
+  "Ring handler (both arities) for an event POSTed to a connected component's
+   path (/ds/nds-connect/<component>/<component-id>/<event>): it runs through
+   the flow that lives with the user's open stream."
+  ([req] (connected-event-response req))
+  ([req respond raise]
+   (try
+     (respond (connected-event-response req))
+     (catch Exception e
+       (raise e)))))
+
 (def ^:private connect-req
   {:path-params {:component "home.home" :component-id "c1" :event "INIT"}
    :params      {:logged-user {:user/id "u1"}}})
@@ -369,10 +545,8 @@
  (def prior-observer @@#'observer/!observer)
  (def connect-obs (spy/spy))
  (observer/set-observer! connect-obs)
- (with-redefs [register-connection!   (constantly nil)
+ (with-redefs [open-flow!             (constantly ::sent)
                unregister-connection! (constantly nil)
-               pipeline/process-component-event (fn [r & _] r)
-               send-html-to-sse!      (constantly ::sent)
                observer/labels        (constantly {:component "home.home" :event "INIT"})]
    (def opts (connect-opts))
    ((get opts on-open) ::sse) := ::sent
@@ -388,11 +562,8 @@
  (def race-obs (spy/spy))
  (observer/set-observer! race-obs)
  (def !race-opts (promise))
- (with-redefs [register-connection!   (constantly nil)
+ (with-redefs [open-flow!             (fn [& _] ((get @!race-opts on-close) ::sse) ::sent)
                unregister-connection! (constantly nil)
-               pipeline/process-component-event
-               (fn [r & _] ((get @!race-opts on-close) ::sse) r)
-               send-html-to-sse!      (constantly ::sent)
                observer/labels        (constantly {:component "home.home" :event "INIT"})]
    (deliver !race-opts (connect-opts))
    ((get @!race-opts on-open) ::sse))
@@ -427,8 +598,8 @@
   "Enqueues an inert keep-alive write to every open connection, reusing the
    per-user write channel + stale-drop semantics of send-replies!."
   []
-  (doseq [[component-id user-map] @!connections
-          [user-id sse-gen]       user-map]
+  (doseq [[component-id user-map]   @!connections
+          [user-id {:keys [sse-gen]}] user-map]
     (enqueue-write! component-id user-id sse-gen
                     (fn []
                       (try
@@ -458,13 +629,13 @@
 
 (tests
  "unregister-connection! removes user from connections map"
- (reset! !connections {"cid-1" {"user-a" ::sse-a "user-b" ::sse-b}})
+ (reset! !connections {"cid-1" {"user-a" {:sse-gen ::sse-a} "user-b" {:sse-gen ::sse-b}}})
  (reset! !user-chans {})
  ;; user-b still has a connection, so only user-a should be removed
  (ensure-user-chan! "user-a")
  (ensure-user-chan! "user-b")
  (unregister-connection! :comp "cid-1" ::sse-a {:user/id "user-a"})
- (get @!connections "cid-1") := {"user-b" ::sse-b}
+ (get @!connections "cid-1") := {"user-b" {:sse-gen ::sse-b}}
  ;; user-a has no connections left, channel should be destroyed
  (get @!user-chans "user-a") := nil
  ;; user-b still connected, channel alive
@@ -475,8 +646,8 @@
 
 (tests
  "send-heartbeat! enqueues one inert patch-signals write per open connection"
- (reset! !connections {"cid-1" {"user-a" ::sse-a}
-                       "cid-2" {"user-b" ::sse-b}})
+ (reset! !connections {"cid-1" {"user-a" {:sse-gen ::sse-a}}
+                       "cid-2" {"user-b" {:sse-gen ::sse-b}}})
  (with-redefs [enqueue-write! (spy/spy)]
    (send-heartbeat!)
    ;; one write enqueued per open connection, each [cid uid sse-gen write-fn]
@@ -493,7 +664,7 @@
  (reset! !user-chans {})
  (register-connection! :comp "cid-1" ::sse-a {:user/id "user-a"})
  ;; connection registered
- (get-in @!connections ["cid-1" "user-a"]) := ::sse-a
+ (sse-gen-of "cid-1" "user-a") := ::sse-a
  ;; user channel created
  (some? (get-in @!user-chans ["user-a" :chan])) := true
  (reset! !connections {})
@@ -512,12 +683,12 @@
  (register-connection! :comp "cid-1" ::sse-new {:user/id "user-a"})
  ;; the old stream's on-close arrives late — must be a no-op
  (unregister-connection! :comp "cid-1" ::sse-old {:user/id "user-a"})
- (get-in @!connections ["cid-1" "user-a"]) := ::sse-new
+ (sse-gen-of "cid-1" "user-a") := ::sse-new
  ;; the user's write channel survives too
  (some? (get-in @!user-chans ["user-a" :chan])) := true
  ;; closing the CURRENT stream still unregisters and destroys the channel
  (unregister-connection! :comp "cid-1" ::sse-new {:user/id "user-a"})
- (get-in @!connections ["cid-1" "user-a"]) := nil
+ (sse-gen-of "cid-1" "user-a") := nil
  (get @!user-chans "user-a") := nil
  (reset! !connections {})
  (reset! !user-chans {}))
@@ -525,7 +696,7 @@
 (tests
  "write-failure kick is identity-guarded: a failed write on a STALE sse-gen
   leaves a newer registered connection in place"
- (reset! !connections {"cid-1" {"u1" ::sse-new}})
+ (reset! !connections {"cid-1" {"u1" {:sse-gen ::sse-new}}})
  (reset! !user-chans {})
  (ensure-user-chan! "u1")
  ;; a patch enqueued for the OLD sse-gen fails — must not evict ::sse-new
@@ -533,13 +704,13 @@
    (send-replies! "cid-1" "u1" ::sse-old
                   [[:patch [:div "msg"] {}]])
    (Thread/sleep 100))
- (get-in @!connections ["cid-1" "u1"]) := ::sse-new
+ (sse-gen-of "cid-1" "u1") := ::sse-new
  ;; the same failure on the CURRENT sse-gen does evict it
  (with-redefs [send-effect! (fn [_ _] (throw (ex-info "Broken pipe" {})))]
    (send-replies! "cid-1" "u1" ::sse-new
                   [[:patch [:div "msg"] {}]])
    (Thread/sleep 100))
- (get-in @!connections ["cid-1" "u1"]) := nil
+ (sse-gen-of "cid-1" "u1") := nil
  (reset! !connections {})
  (destroy-user-chan! "u1")
  (reset! !user-chans {}))
@@ -610,7 +781,7 @@
 
 (tests
  "send-replies! dispatches :patch via send-effect! to single user"
- (reset! !connections {"cid-1" {"u1" ::sse1}})
+ (reset! !connections {"cid-1" {"u1" {:sse-gen ::sse1}}})
  (reset! !user-chans {})
  (ensure-user-chan! "u1")
  (with-redefs [send-effect! (spy/spy)]
@@ -627,7 +798,7 @@
 
 (tests
  "send-replies! :patch removes stale connection on failure"
- (reset! !connections {"cid-1" {"user-bad" ::sse-bad}})
+ (reset! !connections {"cid-1" {"user-bad" {:sse-gen ::sse-bad}}})
  (reset! !user-chans {})
  (ensure-user-chan! "user-bad")
  (with-redefs [send-effect! (fn [_sse-gen _effect]
@@ -635,7 +806,7 @@
    (send-replies! "cid-1" "user-bad" ::sse-bad
                   [[:patch [:div "msg"] {}]])
    (Thread/sleep 100))
- (get-in @!connections ["cid-1" "user-bad"]) := nil
+ (sse-gen-of "cid-1" "user-bad") := nil
  (reset! !connections {})
  (destroy-user-chan! "user-bad")
  (reset! !user-chans {}))
@@ -644,7 +815,7 @@
 
 (tests
  "handle-ui-event dispatches to send-replies! for specific user"
- (reset! !connections {"cid-1" {"u1" ::sse1 "u2" ::sse2}})
+ (reset! !connections {"cid-1" {"u1" {:sse-gen ::sse1} "u2" {:sse-gen ::sse2}}})
  (reset! !user-chans {})
  (ensure-user-chan! "u1")
  (with-redefs [send-replies! (spy/spy)]
@@ -663,7 +834,7 @@
  "handle-ui-event re-establishes the mulog context send-ui! captured, so
   send-replies! (and the write thunks it enqueues) run inside the caller's
   trace rather than context-less"
- (reset! !connections {"cid-1" {"u1" ::sse1}})
+ (reset! !connections {"cid-1" {"u1" {:sse-gen ::sse1}}})
  (reset! !user-chans {})
  ;; the stub answers with the :turn of the context it was called under
  (with-redefs [send-replies! (spy/spy (fn [& _] (:turn (com.brunobonacci.mulog/local-context))))]
@@ -707,3 +878,59 @@
    (Thread/sleep 50)
    (spy/calls handler) := [[fail-msg] [ok-msg]]
    (.interrupt t)))
+
+;;; Tests — the connection's component flow
+
+(tests
+ "a connected flow: open-flow! registers the flow and sends the INIT render
+  down the stream; a send-event! render is pushed through the user's write
+  channel; a POST runs through the SAME flow (state continues) and is answered
+  directly — never pushed down the stream"
+ (def ^:private cc-machine
+   {:id :cc :initial :idle
+    :states {:idle {:on {:INIT {:actions (fn [ctx _] (assoc ctx :n 0))}
+                         :BUMP {:actions (fn [ctx _] (update ctx :n inc))}}}}})
+ (def ^:private cc-view (fn [ctx] [:p {:id (:component-id ctx)} (str (:n ctx))]))
+ (reset! !connections {})
+ (reset! !user-chans {})
+ (with-redefs [discovery/discover-component
+               (fn ([_] {:machine #'cc-machine :component-fn #'cc-view})
+                 ([_ _] {:machine #'cc-machine :component-fn #'cc-view}))
+               send-html-to-sse! (spy/spy)]
+   (open-flow! {:params {:logged-user {:user/id "u1"}}} :cc "cc1" "INIT" ::sse-1 {:user/id "u1"})
+   (:html (ffirst (spy/calls send-html-to-sse!))) := [:p {:id "cc1"} "0"]
+
+   (send-event! "cc1" "u1" "bump" {}) := true
+   (Thread/sleep 150)
+   (:html (first (spy/last-call send-html-to-sse!))) := [:p {:id "cc1"} "1"]
+
+   (def cc-post {:path-params {:component "cc" :component-id "cc1" :event "bump"}
+                 :params      {:logged-user {:user/id "u1"}}})
+   (:body (handler-connected-component-event cc-post)) := "<p id=\"cc1\">2</p>"
+   (Thread/sleep 50)
+   (spy/call-count send-html-to-sse!) := 2
+
+   "reconnect: the new stream's registration stops the old flow; the old
+    stream's late on-close leaves the new flow running"
+   (def old-cf (get-in @!connections ["cc1" "u1" :flow]))
+   (open-flow! {:params {:logged-user {:user/id "u1"}}} :cc "cc1" "INIT" ::sse-2 {:user/id "u1"})
+   (<!! (:out-chan old-cf)) := nil
+   (unregister-connection! :cc "cc1" ::sse-1 {:user/id "u1"})
+   (send-event! "cc1" "u1" "bump" {}) := true
+
+   "closing the current stream stops its flow; send-event! then reports false"
+   (def new-cf (get-in @!connections ["cc1" "u1" :flow]))
+   (unregister-connection! :cc "cc1" ::sse-2 {:user/id "u1"})
+   (send-event! "cc1" "u1" "bump" {}) := false
+   (Thread/sleep 50)
+   (<!! (:out-chan new-cf)) := nil)
+ (reset! !connections {})
+ (reset! !user-chans {}))
+
+(tests
+ "a POST with no open connection falls back to the default one-shot handler"
+ (reset! !connections {})
+ (with-redefs [default-handler/default-handler (spy/spy (constantly ::one-shot))]
+   (handler-connected-component-event {:path-params {:component "cc" :component-id "x" :event "bump"}
+                                       :params      {:logged-user {:user/id "nobody"}}})
+   := ::one-shot))

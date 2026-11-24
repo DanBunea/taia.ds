@@ -9,11 +9,17 @@
 
 - `handler-component-event (def)` — Ring handler for dynamic component events (/ds/nds/<component>/<component-id>/<event>):
 - `handler-connected-component-connect (def)` — Async Ring handler that opens an SSE connection for a connected component
+- `handler-connected-component-event (def)` — Ring handler (both arities) for an event POSTed to a connected component's
 - `set-observer! [f]` — Installs `f` as the observer of component events on /ds/nds and
 - `set-component-search-paths! [paths]` — Sets the ordered list of namespace prefixes used to resolve components.
 - `warm-component-cache! [component-names]` — Pre-resolves the given Datastar components into the discovery cache so the
-- `process-component-event [req component-name component-id event-name controller-name]` — Runs the component pipeline in-process (discovery → FSM transition →
+- `process-component-event [req component-name component-id event-name controller-name]` — Runs one event through a per-request component flow in-process
 - `send-ui! [component-id user-id component-responses]` — Puts component-responses onto the UI channel for async delivery to
+- `start-component-flow! [opts]` — Starts a component's flow headless — no SSE stream: the machine and
+- `run-flow-event! [component-flow req event-name]` — Runs one event through a flow from `start-component-flow!` and returns
+- `stop-component-flow! [component-flow]` — Stops a flow from `start-component-flow!`.
+- `connections []` — The open SSE streams, as {component-id [user-id …]}: who `send-ui!` and
+- `send-event! [component-id user-id event-name params]` — Sends a server event to the connected component (component-id, user-id):
 - `ctx->data-signals [ctx]` — The `data-signals` attribute value for a component's root element: the
 - `html-response [hiccup]` — Ring 200 text/html response for `hiccup` — e.g. the full-page render that
 

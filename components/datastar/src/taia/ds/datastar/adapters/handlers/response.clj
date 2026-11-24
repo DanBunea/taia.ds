@@ -94,3 +94,106 @@
                                (d*/with-open-sse sse-gen
                                  (doseq [effect patch-effects]
                                    (send-effect! sse-gen effect))))})))
+
+(defn component-responses?
+  "Returns true if the component returned a list of effects rather than plain hiccup.
+   Effects are a seq of vectors whose first element is a keyword: [[:effect-name ...] ...]."
+  [html]
+  (and (vector? html) (vector? (first html)) (keyword? (first (first html)))))
+
+(tests
+ "component-responses?: plain hiccup → false (first element is the tag keyword,
+  not a nested vector)"
+ (component-responses? [:div "x"])              := false
+ (component-responses? [:div {:class "y"} "x"]) := false
+
+ "component-responses?: a list of effect-vectors keyed by keyword → true"
+ (component-responses? [[:patch [:div]]])               := true
+ (component-responses? [[:execute-script "alert(1)"]])  := true
+ (component-responses? [[:patch [:div]]
+                        [:patch-signals {:k 1}]])       := true
+
+ "component-responses?: empty / nil / non-vector → falsy"
+ (component-responses? [])  := false
+ (component-responses? nil) := false)
+
+(defn has-patch-effects?
+  "Returns true if the effects list contains at least one :patch, :patch-signals, or :execute-script effect."
+  [html]
+  (and (component-responses? html)
+       (some #(#{:patch :patch-signals :execute-script} (first %)) html)))
+
+(tests
+ "has-patch-effects?: an effects list with at least one :patch / :patch-signals
+  / :execute-script → truthy"
+ (boolean (has-patch-effects? [[:patch [:div]]]))                 := true
+ (boolean (has-patch-effects? [[:patch-signals {:k 1}]]))         := true
+ (boolean (has-patch-effects? [[:execute-script "x"]]))           := true
+ (boolean (has-patch-effects? [[:broadcast-elements [:div]]
+                               [:patch [:div]]]))                 := true
+
+ "has-patch-effects?: effects list with only non-patch effect types → falsy"
+ (boolean (has-patch-effects? [[:broadcast-elements [:div]]]))    := false
+ (boolean (has-patch-effects? [[:broadcast-hide-loading "c1"]]))  := false
+
+ "has-patch-effects?: plain hiccup / empty / nil → falsy"
+ (boolean (has-patch-effects? [:div "x"])) := false
+ (boolean (has-patch-effects? []))         := false
+ (boolean (has-patch-effects? nil))        := false)
+
+(defn render-response
+  "Final pipeline step: converts the component result to a Ring response.
+   - Effects with :patch/:patch-signals → one-shot SSE (multiple DOM/signal patches)
+   - Effects without :patch             → empty HTML body (no-op)
+   - Plain hiccup                       → rendered as HTML"
+  [{:keys [html request]}]
+  (cond
+    (has-patch-effects? html)   (send-responses request html)
+    (component-responses? html) (->html [])
+    :else                       (->html html)))
+
+(tests
+ "render-response: html with patch effects → delegates to send-responses
+  with the original request and the effects list (no ->html call)"
+ (with-redefs [send-responses (spy/spy (fn [_req _html] ::sse-response))
+               ->html         (spy/spy (fn [_html] ::http-response))]
+   (let [out (render-response {:request {::r 1}
+                               :html    [[:patch [:div "x"]]]})]
+     [out
+      (spy/calls send-responses)
+      (spy/not-called? ->html)])) := [::sse-response
+                                      [[{::r 1} [[:patch [:div "x"]]]]]
+                                      true]
+
+ "render-response: effects-shaped html with NO patch entries → empty body via
+  ->html [] (no SSE)"
+ (with-redefs [send-responses (spy/spy (fn [_ _] ::sse-response))
+               ->html         (spy/spy (fn [_] ::http-response))]
+   (let [out (render-response {:request {}
+                               :html    [[:broadcast-elements [:div]]]})]
+     [out
+      (spy/not-called? send-responses)
+      (spy/calls ->html)])) := [::http-response true [[[]]]]
+
+ "render-response: plain hiccup → ->html with the hiccup verbatim"
+ (with-redefs [send-responses (spy/spy (fn [_ _] ::sse-response))
+               ->html         (spy/spy (fn [_] ::http-response))]
+   (let [out (render-response {:request {}
+                               :html    [:div "x"]})]
+     [out (spy/calls ->html)])) := [::http-response [[[:div "x"]]]])
+
+(defn error-response
+  "The 400 a component event answers with when a step threw (or timed out):
+   a plain-text diagnostic naming the component, instance, event and
+   controller."
+  [^Throwable e component-name component-id event-name controller-name]
+  {:status 400
+   :headers {"Content-Type" "text/plain; charset=utf-8"}
+   :body (str "Error processing component event: " (.getMessage e) "\n"
+              "Component: " component-name "\n"
+              "Component-ID: " component-id "\n"
+              "Event: " event-name "\n"
+              (when controller-name (str "Controller: " controller-name "\n"))
+              "Error message: " (.getMessage e) "\n"
+              "Stack trace: " (with-out-str
+                                (.printStackTrace e (java.io.PrintWriter. *out*))))})

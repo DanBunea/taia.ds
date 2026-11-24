@@ -26,7 +26,8 @@ parameters must be called `:component`, `:component-id`, `:event` (and optionall
   ["/:component/:component-id/:controller/:event" {:handler ds/handler-component-event}]
   ["/:component/:component-id/:event"             {:handler ds/handler-component-event}]]
  ["/nds-connect"
-  ["/:component/:component-id/:event"             {:handler ds/handler-connected-component-connect}]]]
+  ["/:component/:component-id/:event"             {:get  {:handler ds/handler-connected-component-connect}
+                                                   :post {:handler ds/handler-connected-component-event}}]]]
 ```
 
 Around them, the middleware the handlers rely on:

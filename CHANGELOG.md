@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- The component pipeline now runs as a `clojure.core.async.flow` (`taia.ds.datastar.adapters.flow`) of two procs: `:controller` (state machine) and `:view` (render). The machine and render fn are resolved once, when the flow is built; events go in on an `:in-chan` and renders come out of an `:out-chan`. `pipeline.clj` keeps the steps; `process-component-event` moved to the flow namespace (same signature and result, re-exported on the interface). It now also throws an `ex-info` with `::timeout` after 30 s.
+- One-shot events (`/ds/nds/…`) get a per-request flow. Measured: about 200 µs per event, against 100 µs for the plain pipeline; no thread or heap growth.
+- A connected component's flow lives as long as its SSE stream and holds the ctx between events. The held `:state` wins over the client's echo, and the client's `:memory` is merged over the held memory.
+- New `handler-connected-component-event`: `POST /ds/nds-connect/<component>/<component-id>/<event>` runs through the stream's flow and is answered with the render. Without an open stream it falls back to the one-shot handler. Mount it next to the connect handler (`{:get … :post …}`).
+- New `send-event!`: a server event to a connection's flow, whose render is pushed down the stream.
+- New `start-component-flow!`, `run-flow-event!` and `stop-component-flow!`, to drive a flow headless (tests).
+- `!connections` entries are `{:sse-gen :flow}`. Whoever removes an entry (on-close, a stale write, a reconnect) stops its flow.
+- Observer: a POST through a connected flow reports `:route :nds-connect-event`.
+- Examples: 7 · Countdown (`live.countdown`), a connected component driven by server events, with its article, spec block and e2e spec.
+
 ## 0.2.0 — 2026-11-10
 
 - Examples: the examples home page is now itself a component (`home.home`, with a controller). There is no page route any more: a GET on `/ds/nds/home.home/home/init?example=<name>` renders it, and `start!` returns that URL. `layout.clj` → `components/home/` (the registry lives in the controller).

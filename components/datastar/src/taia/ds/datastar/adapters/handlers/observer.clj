@@ -5,7 +5,7 @@
    (`taia.ds.datastar.interface/set-observer!`), and does nothing at all when none is set.
 
    Observations:
-   - {:type :event :route :nds|:nds-connect :component c :event e
+   - {:type :event :route :nds|:nds-connect|:nds-connect-event :component c :event e
       :outcome :ok|:error :seconds s}
    - {:type :sse-opened :component c}
    - {:type :sse-closed :component c :seconds lifetime}

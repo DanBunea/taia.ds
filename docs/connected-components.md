@@ -9,12 +9,79 @@ the server can write to for as long as the page lives.
 [:div {:id "live1" "data-init" "@get('/ds/nds-connect/live.live-counter/live1/init')"} "…"]
 ```
 
-`handler-connected-component-connect` registers the stream under `[component-id user-id]` (the
-user from `[:params :logged-user :user/id]`), runs the INIT through the pipeline and sends the
-render down the stream as a patch. The stream then stays open; the server heartbeats every
-**15 s**. A second stream for the same `[component-id user-id]` replaces the first.
+`handler-connected-component-connect` starts the component's **flow** (below), registers it and
+the stream under `[component-id user-id]` (the user from `[:params :logged-user :user/id]`), runs
+the INIT through the flow and sends the render down the stream as a patch. The stream then stays
+open; the server heartbeats every **15 s**. A second stream for the same `[component-id user-id]`
+replaces the first, and stops the first one's flow.
 
 The handler is async only — `[req respond raise]`.
+
+## The component flow
+
+Every event — one-shot or connected — runs through a `clojure.core.async.flow` of two procs:
+
+```
+in-chan ──▶ :controller ──:to-view──▶ :view ──▶ out-chan
+            (state machine)            (render)
+```
+
+The machine and the render fn are resolved once, when the flow is built. A one-shot event
+(`/ds/nds/…`) gets a flow of its own, which is stopped as soon as it answers. A connected
+component's flow lives as long as its stream, and its `:controller` **holds the ctx** between
+events: each event transitions from where the previous one left off, not from what the client
+sends back.
+
+Two kinds of event reach that flow after the INIT.
+
+**A browser event**: `@post` to the connect path itself. Mount the `:post` route next to the
+`:get` one:
+
+```clojure
+["/nds-connect"
+ ["/:component/:component-id/:event"
+  {:get  {:handler ds/handler-connected-component-connect}
+   :post {:handler ds/handler-connected-component-event}}]]
+```
+
+```clojure
+[:button {"data-on:click" "@post('/ds/nds-connect/live.countdown/countdown1/start')"} "Start"]
+```
+
+The event runs through the user's flow, and the POST is answered with the render, exactly like a
+one-shot component (HTML, or a one-shot SSE for an effects list); it is not pushed down the
+stream as well. With no open stream (closed, or reconnecting) the POST falls back to the one-shot
+handler, so the click still renders.
+
+**A server event**: `send-event!`.
+
+```clojure
+(ds/send-event! "countdown1" "alice" "tick" {})   ; => true, or false with no open stream
+```
+
+![The live counter: a click and the REPL's (inc!) both send :INCREMENT through the same in-chan; the same controller and view run; the count goes 1, 2, 3, the last render over the open stream](img/repl-event-flow.gif)
+
+It transitions from the held ctx with no request at all, and its render is pushed down that
+user's stream, on the same ordered write queue as `send-ui!`. The sender's mulog context travels
+with it. This is the counterpart of `send-ui!` that keeps the component's own render fn as the
+single source of markup: send the *event*, not the patch.
+
+### How the held ctx and the client's signals combine
+
+A browser event still carries the client's signal store. With a held ctx:
+
+- `:memory` is the held memory with the client's signals merged over it: client-owned values
+  (form inputs) win;
+- `:state` is the **held** state: while the flow lives the server is the authority on the FSM
+  position, and the client's echo can be stale after a server push;
+- `:logged-user`, `:app-config` and `:request-method` come from the new request (a server event
+  keeps the held ones, minus `:request-method`).
+
+So keep server-owned values **outside** `:memory` (top-level ctx keys, like the countdown's
+`:remaining`): a stale signal echo can then never overwrite them.
+
+The held ctx lives in memory and dies with the stream. A reconnect starts a new flow from INIT,
+so anything that must survive one belongs in your own storage, read by INIT.
 
 ## Pushing
 
@@ -37,9 +104,12 @@ keep the example in one file; do not read that as a recommendation.
 
 ## Mixing one-shot and connected
 
-The connected stream is for the server → client direction. Clicks on a connected component are
-ordinary `@post` events to `/ds/nds/…`; their one-shot response patches the clicking tab, and a
-push patches everybody. Datastar morphs by id, so a tab receiving both ends up with the same DOM.
+Clicks on a connected component may also be ordinary `@post` events to `/ds/nds/…`, as in the
+[live counter](examples/02-live-counter.md): they run in a flow of their own, from the client's
+signals, and never see the held ctx. Their one-shot response patches the clicking tab, and a push
+patches everybody. Datastar morphs by id, so a tab receiving both ends up with the same DOM. Post
+to `/ds/nds-connect/…` instead when the event should continue the connection's held state, as in
+the [countdown](examples/07-countdown.md).
 
 ## The reconnect watchdog
 
@@ -65,6 +135,7 @@ must handle `:INIT` (an empty map is enough).
 ```
 
 Both handlers report plain maps with bounded labels and no component-id:
-`{:type :event :route :nds|:nds-connect :component … :event … :outcome … :seconds …}`,
+`{:type :event :route :nds|:nds-connect|:nds-connect-event :component … :event … :outcome … :seconds …}`
+(`:nds-connect` is a stream's initial render, `:nds-connect-event` a POST through its flow),
 `{:type :sse-opened :component …}`, `{:type :sse-closed :component … :seconds …}`. Observer
 errors are swallowed; it must never fail a request. Plug Prometheus, mulog or a println in here.

@@ -12,6 +12,7 @@
    [hyperfiddle.rcf :refer [tests]]
    [taia.ds.datastar.interface :as ds]
    [spy.core :as spy]
+   [taia.ds.examples.components.live.countdown-controller :as countdown]
    [taia.ds.examples.components.live.live-counter-controller :as live]
    [taia.ds.examples.components.weather.weather-api :as weather-api]
    [taia.ds.examples.test-support :as ts :refer [run step testid-text]]))
@@ -215,3 +216,33 @@
  "6 weather: WMO codes have a description, unknown ones fall back"
  (weather-api/describe-code 71) := "Light snow"
  (weather-api/describe-code 42) := "Weather code 42")
+
+(tests
+ "7 countdown: the connected flow holds :remaining (top-level ctx, never in
+  :memory); START is a browser event through the flow, every TICK a server
+  event with no request at all"
+ (with-redefs [countdown/start-ticker! (spy/spy)]
+   (def cd-conn (ts/connect "live.countdown" "countdown1" {}))
+   (def cd (first cd-conn))
+   (second cd-conn) := {:memory {} :state :idle :html _ :ctx _}
+   (testid-text (:html (second cd-conn)) "remaining") := "5"
+
+   (def cd1 (ts/flow-event cd "countdown1" "start"))
+   (:state cd1) := :running
+   (spy/calls countdown/start-ticker!) := [["countdown1" "tester" 5]])
+
+ (testid-text (:html (ts/server-event cd "tick")) "remaining") := "4"
+ (dotimes [_ 3] (ts/server-event cd "tick"))
+ (def cd5 (ts/server-event cd "tick"))
+ (:state cd5) := :done
+ (testid-text (:html cd5) "remaining") := "0"
+ (str/includes? (testid-text (:html cd5) "phase") "server sent every tick") := true
+
+ "7 countdown: a click carrying a stale :state echo does not move the held
+  state — the flow is the authority"
+ (with-redefs [countdown/start-ticker! (spy/spy)]
+   (:state (ts/flow-event cd "countdown1" "start")) := :running)
+ ;; the echo claims :idle (where TICK does nothing); the held :running wins
+ (def cd6 (ts/flow-event cd "countdown1" "tick" {:state "idle"}))
+ [(:state cd6) (testid-text (:html cd6) "remaining")] := [:running "4"]
+ (ds/stop-component-flow! cd))

@@ -1,7 +1,8 @@
 (ns taia.ds.datastar.adapters.handlers.pipeline
-  "Shared component event processing pipeline.
-   Extracts the core steps (discovery, event extraction, state machine,
-   rendering) used by both the default HTTP handler and the SSE connect handler."
+  "The steps of the component event pipeline (discovery, event extraction,
+   initial ctx, state machine, removal nils, rendering). They are composed by
+   the procs of `taia.ds.datastar.adapters.flow`, which runs them as a
+   core.async flow for both the default and the connected handler."
   (:require
    [charred.api :as charred]
    [taia.ds.datastar.adapters.handlers.discovery :as discovery]
@@ -530,89 +531,3 @@
  (-> (assoc-html {:component-fn-var #'html-fn-effect :ctx {}})
      :html)
  := [[:execute-script "window.location.href='/x'"]])
-
-(defn process-component-event
-  "Runs the component pipeline: discovery, event extraction, state machine,
-   and rendering. Returns the result map with :html key containing the
-   rendered component (plain hiccup or effects list)."
-  [req component-name component-id event-name controller-name]
-  (log/trace-when (log/trace-enabled? :verbose (log/log-level))
-                  (keyword (str "process-component-event/" event-name))
-                  [:component-name component-name
-                   :component-id component-id
-                   :event-name event-name
-                   :controller-name controller-name]
-                  (-> {:request req
-                       :component-name component-name
-                       :component-id component-id
-                       :controller-name controller-name}
-                      assoc-component-fn-and-machine
-                      (assoc-event event-name)
-                      assoc-initial-ctx-and-state
-                      assoc-process-event-results
-                      assoc-removed-signal-nils
-                      assoc-html)))
-
-(tests
- "process-component-event: full happy-path pipeline — discovery → event →
-  initial-ctx (with :app-config forwarded) → SM transition → render. The
-  component fn sees the post-transition ctx and returns hiccup that closes
-  over both event-params and :app-config."
- (def ^:private pce-machine
-   {:id :pce :initial :idle
-    :states {:idle {:on {:DO {:target  :done
-                              :actions (fn [ctx params]
-                                         (assoc-in ctx [:memory :last-event] params))}}}
-             :done {}}})
-
- (def ^:private pce-component-fn
-   (fn [ctx]
-     [:div
-      {:state    (:state ctx)
-       :grafana  (get-in ctx [:app-config :grafana :base-url])
-       :last     (get-in ctx [:memory :last-event])}]))
-
- (with-redefs [discovery/discover-component
-               (fn ([_]   {:machine #'pce-machine :component-fn #'pce-component-fn})
-                 ([_ _] {:machine #'pce-machine :component-fn #'pce-component-fn}))]
-   (let [req    {:body-params {}
-                 :params      {:logged-user {:user/id "u-1"}
-                               :note        "hi"}
-                 :app-config  {:grafana {:base-url "http://localhost:3000"}}}
-         result (process-component-event req :pce "1" "DO" nil)]
-     (:html result)))
- := [:div {:state :done
-           :grafana "http://localhost:3000"
-           :last {:note "hi"}}]
-
- "process-component-event: a memory key dissoc'd by an action is re-emitted as
-  nil in the rendered ctx, so the data-signals round-trip deletes it client-side"
- (def ^:private pce-dissoc-machine
-   {:id :pce-dissoc :initial :idle
-    :states {:idle {:on {:CLEAR {:target  :done
-                                 :actions (fn [ctx _params]
-                                            (update ctx :memory dissoc :stale))}}}
-             :done {}}})
-
- (def ^:private pce-memory-component-fn
-   (fn [ctx] [:div {:memory (:memory ctx)}]))
-
- (with-redefs [discovery/discover-component
-               (fn ([_]   {:machine #'pce-dissoc-machine :component-fn #'pce-memory-component-fn})
-                 ([_ _] {:machine #'pce-dissoc-machine :component-fn #'pce-memory-component-fn}))]
-   (-> (process-component-event {:body-params {:1 {:stale "x" :keep 1 :state "idle"}}
-                                 :params      {}}
-                                :pce-dissoc "1" "CLEAR" nil)
-       :html
-       (get-in [1 :memory])))
- := {:keep 1 :stale nil}
-
- "process-component-event: RENDERER.* internal event short-circuits transition,
-  component fn still rendered against initial-ctx"
- (with-redefs [discovery/discover-component
-               (fn ([_]   {:machine #'pce-machine :component-fn #'pce-component-fn})
-                 ([_ _] {:machine #'pce-machine :component-fn #'pce-component-fn}))]
-   (-> (process-component-event {:body-params {} :params {}} :pce "1" "RENDERER.LOADED" nil)
-       :html
-       (get-in [1 :state])))
- := :idle)

@@ -111,3 +111,20 @@ that reason. Keep it that way if you touch it.
 
 Jetty 12's GzipHandler excludes `text/event-stream` by default (not a suspect). Proxies may buffer
 SSE; the connect handler sends `X-Accel-Buffering: no`, which nginx and Traefik honour.
+
+## A connected flow's state: what the client echoes is not the authority
+
+A connected component's flow holds its ctx between events, and a browser event's signals are
+merged into that held `:memory` (client wins). A value the *server* changes (a countdown, a status
+pushed by a job) therefore goes stale in the client's store the moment the server moves on, and
+the next click would write the stale copy back. Keep server-owned values in top-level ctx, not in
+`:memory`. `:state` is never taken from the client while the flow holds a ctx, for the same
+reason. And the held ctx lives only as long as the stream: a reconnect starts again from INIT.
+
+## Every one-shot event builds a flow
+
+`/ds/nds/…` runs its event through a per-request `core.async.flow`, built and stopped per event.
+Measured on the counter example: about 200 µs per event against 100 µs for the plain function
+pipeline it replaced (p50 163 µs against 77 µs). There is no thread or heap growth, because the
+proc loops run on virtual threads. Negligible next to a network round trip, but it is there.
+`core.async.flow` is still alpha (`1.9.808-alpha1`).
