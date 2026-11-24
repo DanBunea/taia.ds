@@ -4,6 +4,7 @@
  :taia-version "0.3.1"
  :port         7788
  :nrepl-port   7789
+ :e2e-port     7799   ; where `bb e2e-test` starts its own copy of the app
  ;; namespaced directories cannot be named under root/, so they come in here
  :transform    [["base-src"  "bases/web/src/{{top/file}}/{{main/file}}/web"]
                 ["base-test" "bases/web/test/{{top/file}}/{{main/file}}/web"]

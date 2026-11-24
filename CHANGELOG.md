@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- A deps-new template, `taia/app`. `clojure -Tnew create :template io.github.danbunea/taia.ds%template%taia/app :name acme/shop` generates a Polylith workspace with async Jetty, reitit, `bb dev` with an nREPL, RCF tests, `poly check`, an uberjar (`bb uberjar`), and the counter and live counter ready to edit. See `docs/new-project.md`. `bb template-test` generates a project and runs its checks.
+- A deps-new template, `taia/app`. `clojure -Tnew create :template io.github.danbunea/taia.ds%template%taia/app :name acme/shop` generates a Polylith workspace with async Jetty, reitit, `bb dev` with an nREPL, RCF tests, `poly check`, an uberjar (`bb uberjar`), and the counter and live counter ready to edit. See `docs/new-project.md`. `bb template-test` generates a project and runs its checks. The generated project also has inline RCF tests for each action, machine and render fn, and Playwright specs for both components under the console guard (`bb e2e-test`).
+- `taia.ds.state-machines.interface.test-helpers/test-machine`: the declarative machine runner on the interface, so a base in a Polylith workspace that has the brick can use it (`poly check` rejects `taia.ds.state-machines.test-helpers` there). Outside one, `taia.ds.state-machines.test-helpers` is the same fn.
+- Examples: the counter and live counter carry inline tests: each controller action, the machine with `test-machine` (target and action trace per state and event), and the render fn with its collaborators spied. `inspect/state-pre` is tested too. The live counter's REPL helpers `inc!` / `reset!` are gone: a server event from the REPL is `ds/send-event!` itself.
 
 ## 0.3.1 — 2026-11-24
 

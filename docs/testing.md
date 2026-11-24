@@ -63,6 +63,10 @@ The same rules hold for the library's own tests (inline RCF `(tests …)` blocks
 - **Whole values.** Compare the full expected map or vector with `:=`; narrow with `select-keys`
   or a named helper only when the case is about one part.
 
+The counter and live counter show this style on a component. Their controllers test each action,
+then the machine with `test-machine` (see [Testing the machine alone](#testing-the-machine-alone)).
+Their views test the render fn with `ds/ctx->data-signals` and `inspect/state-pre` spied.
+
 ## Driving a connected component's flow
 
 `run`/`step` cover a connected component's browser events too: nothing is kept between events, so
@@ -82,9 +86,27 @@ or to run events through one long-lived flow as a connection does, start the flo
 ## Testing the machine alone
 
 `taia.ds.state-machines.interface/transition` is pure: `(transition machine {:state :a :memory {}} [:GO {}] {:state-key :state})`.
-For machines whose invokes hit the world, `make-machine-testable` swaps named functions for their
-vars so `with-redefs` can intercept them, and `taia.ds.state-machines.test-helpers/test-machine`
-asserts targets and action traces declaratively without running invokes.
+
+`test-machine` asserts, per state and event, where the machine lands and the ordered trace of the
+actions and invokes it went through. It runs neither: an action is recorded by its fn's name, an
+invoke by its id, answered from `:invoke-returns`. The actions have tests of their own.
+
+```clojure
+(require '[taia.ds.state-machines.test-helpers :refer [test-machine]])
+;; in a base of a Polylith workspace that has the brick: taia.ds.state-machines.interface.test-helpers
+
+(tests
+ (test-machine
+  {:displayed {:INCREMENT {:target :displayed :trace [:increment]}
+               :SAVE      {:target :saved     :trace [:store-form :save :save-on-done]}}}
+  machine
+  {:invoke-returns {:save {:id 1}}})
+ := :ok)
+```
+
+It returns `:ok`, or the failing `[from event]` pairs with expected and actual target and trace.
+For a machine that calls the world from somewhere test-machine cannot reach, `make-machine-testable`
+swaps named functions for their vars so `with-redefs` can intercept them.
 
 ## Testing the render fn alone
 

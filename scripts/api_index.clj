@@ -8,7 +8,8 @@
 (def out-file "docs/api.md")
 
 (defn interface-files []
-  (->> (fs/glob "components" "*/src/**/interface.{clj,cljc}")
+  (->> (concat (fs/glob "components" "*/src/**/interface.{clj,cljc}")
+               (fs/glob "components" "*/src/**/interface/*.{clj,cljc}")) ; interface sub-namespaces
        (map str)
        sort))
 
@@ -79,7 +80,7 @@
 (let [files (interface-files)
       md (str "# API index\n\n"
               "> GENERATED — do not edit. Regenerate with `bb api-index`.\n"
-              "> One section per brick: its `interface` namespace and public fns/defs. "
+              "> One section per brick interface namespace (and its `interface.*` sub-namespaces) and its public fns/defs. "
               "Everything outside these namespaces is internal and may change without notice.\n\n"
               (str/join "\n" (map render-file files)))]
   (spit out-file md)

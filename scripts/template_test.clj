@@ -1,8 +1,10 @@
-;; bb template-test [taia-version]
+;; bb template-test [taia-version] [--e2e]
 ;; Generates a project from the deps-new template in template/ (`taia/app`,
 ;; as `acme/shop`) into target/template-test/shop, then runs the generated
 ;; project's own checks: bb test, bb check, bb uberjar, and a smoke test of
-;; the jar over HTTP. Exits non-zero on the first failure.
+;; the jar over HTTP. With --e2e, also its bb e2e-test (Playwright: needs
+;; Node >= 18, downloads Chromium on the first run). Exits non-zero on the
+;; first failure.
 ;;
 ;; The generated project depends on the taia.ds release pinned in
 ;; template.edn (checked against the README pin). Pass a version to test
@@ -19,7 +21,8 @@
 (def target "target/template-test/shop")
 (def port (or (some-> (System/getenv "TEMPLATE_TEST_PORT") parse-long) 7798))
 (def base-url (str "http://localhost:" port))
-(def version-override (first *command-line-args*))
+(def e2e? (boolean (some #{"--e2e"} *command-line-args*)))
+(def version-override (first (remove #{"--e2e"} *command-line-args*)))
 
 (defn step! [title] (println (str "▶ " title)))
 
@@ -37,7 +40,7 @@
 
 (defn check-placeholders! []
   (step! "no unknown {{…}} placeholder in the template")
-  (let [known #{"top/ns" "top/file" "main" "main/ns" "main/file" "taia-version" "port" "nrepl-port"}
+  (let [known #{"top/ns" "top/file" "main" "main/ns" "main/file" "taia-version" "port" "nrepl-port" "e2e-port"}
         bad   (for [f (fs/glob "template/resources/taia/app" "**")
                     :when (fs/regular-file? f)
                     [_ v] (re-seq #"\{\{([^}]*)\}\}" (slurp (fs/file f)))
@@ -93,7 +96,14 @@
             index (get* (get-in root [:headers "location"] ""))
             page  (get* "/ds/nds/home.home/home/init?example=counter")
             live  (get* "/ds/nds/home.home/home/init?example=live-counter")
-            js    (get* "/js/datastar.js")]
+            js    (get* "/js/datastar.js")
+            ;; a one-shot event: loads the component namespaces (and their
+            ;; inline tests' requires) from the jar, runs the machine, renders
+            event (http/post (str base-url "/ds/nds/basics.counter/counter1/increment")
+                             {:throw   false
+                              :client  client
+                              :headers {"Content-Type" "application/json" "datastar-request" "true"}
+                              :body    "{\"counter1\":{\"count\":2,\"state\":\"displayed\"}}"})]
         (expect! "GET / redirects to the home page"
                  (and (= 302 (:status root))
                       (= "/ds/nds/home.home/home/init" (get-in root [:headers "location"]))))
@@ -108,7 +118,10 @@
                  (and (= 200 (:status live))
                       (str/includes? (:body live) "/ds/nds-connect/live.live-counter/live1/init")))
         (expect! "datastar.js is served from the taia.ds jar"
-                 (= 200 (:status js))))
+                 (= 200 (:status js)))
+        (expect! "a counter INCREMENT from 2 renders 3"
+                 (and (= 200 (:status event))
+                      (str/includes? (:body event) "data-testid=\"count\">3<"))))
       (finally
         (p/destroy-tree proc)))))
 
@@ -120,6 +133,8 @@
   (in-project! "bb" "check")
   (in-project! "bb" "uberjar")
   (smoke-test-jar!)
+  (when e2e?
+    (in-project! "bb" "e2e-test"))
   (println "✓ template-test passed:" target)
   (catch clojure.lang.ExceptionInfo e
     (binding [*out* *err*]

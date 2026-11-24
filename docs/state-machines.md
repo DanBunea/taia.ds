@@ -71,10 +71,11 @@ path lands there: a one-shot request goes `review → saving → done` in one ca
 ## Testing a machine
 
 `taia.ds.state-machines.interface` exposes `transition` and `make-machine-testable`; the
-`test-helpers` namespace adds a declarative runner, `test-machine`, which asserts the target and the
-ordered trace of action/invoke names per `[from-state event]` without running invokes. The
-[examples suite](testing.md) prefers driving machines through the pipeline, which also covers the
-render.
+`test-helpers` namespace (`interface.test-helpers` from a Polylith base) adds a declarative runner,
+`test-machine`, which asserts the target and the ordered trace of action/invoke names per
+`[from-state event]` without running actions or invokes. The counter and live counter controllers
+use it; [Testing components](testing.md#testing-the-machine-alone) has an example. The pipeline
+tests in the examples suite cover the machine and the render together.
 
 ## If you know XState
 

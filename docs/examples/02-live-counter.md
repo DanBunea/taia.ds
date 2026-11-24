@@ -45,14 +45,7 @@ A click and a `send-event!` from the REPL, step by step, through the same in-cha
 (ds/send-event! "live1" "demo-user" "reset" {})                ; back to 0
 ```
 
-The controller's comment block also has two helpers that pick an open tab for you, `(inc! 41)` and
-`(reset!)`:
-
-```clojure
-(require '[taia.ds.examples.components.live.live-counter-controller :as live])
-(live/inc! 41)
-(live/reset!)
-```
+The controller's comment block has the same calls, next to the code they drive.
 
 **Spec**: block 2 in `examples_test.clj` (a click starts from the signals, a server event from its
 params; the render carries the count in `data-signals`), and `e2e/tests/live-counter.spec.ts`.

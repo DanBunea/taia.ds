@@ -1,7 +1,7 @@
 # API index
 
 > GENERATED — do not edit. Regenerate with `bb api-index`.
-> One section per brick: its `interface` namespace and public fns/defs. Everything outside these namespaces is internal and may change without notice.
+> One section per brick interface namespace (and its `interface.*` sub-namespaces) and its public fns/defs. Everything outside these namespaces is internal and may change without notice.
 
 ## `datastar` — `taia.ds.datastar.interface`
 
@@ -55,3 +55,9 @@
 
 - `transition [machine :- domain/MachineDefinition from-state :- domain/Context [event-name event-params] :- domain/Event] [machine :- domain/MachineDefinition from-state :- domain/Context [event-name event-params] :- domain/Event opts :- domain/TransitionOpts] :- domain/Context` — Runs a state machine transition. Returns the updated context map containing
 - `make-machine-testable (def)` — Replaces named fn values in a machine with their vars so with-redefs can intercept them in tests.
+
+## `state-machines` — `taia.ds.state-machines.interface.test-helpers`
+
+[components/state-machines/src/taia/ds/state_machines/interface/test_helpers.cljc](../components/state-machines/src/taia/ds/state_machines/interface/test_helpers.cljc)
+
+- `test-machine (def)` — Declarative machine test: per state and event, the target and the trace of actions/invokes.

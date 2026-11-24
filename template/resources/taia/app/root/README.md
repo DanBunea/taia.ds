@@ -25,13 +25,31 @@ restart. Restart only after changing routes or middleware.
 
 ```shell
 bb dev        # app on {{port}} + nREPL on {{nrepl-port}}
-bb test       # Kaocha + RCF inline tests (bases/web/test/…/web_test.clj)
+bb test       # Kaocha + RCF tests, inline in src and in bases/web/test
+bb e2e-test   # Playwright specs against the app on {{e2e-port}}; bb e2e-test <spec> [--headed]
 bb check      # poly check
 bb info       # poly info
 bb uberjar    # projects/{{main}}/target/{{main}}.jar
 bb run-server # java -jar that jar (PORT env var, default {{port}})
 bb format     # cljfmt fix (needs cljfmt on the PATH)
 ```
+
+## Tests
+
+There are three layers, each catching what the one before can't:
+
+- **Inline `(tests …)` blocks** sit next to the code (RCF), one function per test:
+  - each controller's actions on their own;
+  - its machine, with `test-machine`: per state and event, where it lands and the trace of
+    actions it runs (without running them);
+  - each render fn, with its collaborators (`ds/ctx->data-signals`, `inspect/state-pre`) spied.
+- **`web_test.clj`** drives the whole pipeline in process (discovery → machine → render) through
+  `test_support.clj`, with no HTTP: the round trip of `:memory` through the signal store, and a
+  connected component's server events.
+- **`e2e/`** has Playwright specs against the running app, all under `console-guard.ts`, which fails
+  a spec on any browser console error. This is the only way to see a Datastar expression that throws
+  and silently stops the attribute pass for the whole patched subtree, which no server-side test
+  notices. `bb e2e-test` needs Node >= 18 and downloads Chromium on its first run.
 
 ## The REPL
 
@@ -42,14 +60,17 @@ Connect to the nREPL that `bb dev` opens, or start your own REPL with the `:dev`
 (start!)     ; the app on {{port}}; returns its URL
 (restart!)   ; after changing routes or middleware
 
-;; open the live counter page, then push into that tab from here:
-(require '[{{top/ns}}.{{main/ns}}.web.components.live.live-counter-controller :as live])
-(live/inc! 2)  ; the tab shows 3
-(live/reset!)
+;; open the live counter page (you are "demo-user"), then send its flow a
+;; server event: component-id, user-id, event, params. A server event has no
+;; signals, so it sends the memory as params.
+(require '[taia.ds.datastar.interface :as ds])
+(ds/connections)                                            ; {"live1" ["demo-user"]}
+(ds/send-event! "live1" "demo-user" "increment" {:count 2}) ; the tab shows 3
+(ds/send-event! "live1" "demo-user" "reset" {})             ; back to 0
 ```
 
-`development/src/dev.clj` has more of these in its `comment` block (`ds/connections`,
-`ds/send-event!` and `ds/send-ui!`).
+`development/src/dev.clj` and the live counter's controller have these in their `comment` blocks,
+and `dev.clj` also shows `ds/send-ui!`.
 
 ## Layout
 
@@ -61,6 +82,8 @@ bases/web/src/{{top/file}}/{{main/file}}/web/
   components/basics/counter*.clj
   components/live/live_counter*.clj
 bases/web/test/…                 test_support.clj (pipeline in process) + web_test.clj
+e2e/                             Playwright: one spec per component, console-guard.ts
+scripts/e2e.clj                  bb e2e-test: starts the app on {{e2e-port}}, runs the specs
 development/src/                 dev.clj (start!/stop!/restart!, nREPL), user.clj
 projects/{{main}}/               the deployable project: deps.edn + build.clj (uberjar)
 components/                      your Polylith components, as the app grows
@@ -74,7 +97,8 @@ components/                      your Polylith components, as the app grows
 3. Add an entry to `examples` in `components/home/home_controller.clj`, with `:component
    "<group>.<name>"` and a `:cid`. Add `:connected? true` for a component that keeps a stream
    open.
-4. Add a `(tests …)` block in `web_test.clj`.
+4. Add tests: inline `(tests …)` for the actions, the machine and the render fn; a block in
+   `web_test.clj`; and an `e2e/tests/<name>.spec.ts` that calls `installConsoleGuard()`.
 
 The concepts are in the taia.ds docs: [components](https://github.com/DanBunea/taia.ds/blob/main/docs/components.md),
 [state machines](https://github.com/DanBunea/taia.ds/blob/main/docs/state-machines.md),

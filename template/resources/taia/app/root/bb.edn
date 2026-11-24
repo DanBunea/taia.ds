@@ -3,6 +3,8 @@
                 :task (clojure "-M:dev -m dev")}
   test         {:doc "Run the unit tests (Kaocha + RCF inline tests)"
                 :task (clojure "-M:dev:test")}
+  e2e-test     {:doc "Playwright end-to-end specs against the app on port {{e2e-port}}. bb e2e-test [spec] [--headed]; needs Node >= 18"
+                :task (load-file "scripts/e2e.clj")}
   check        {:doc "Validate the Polylith workspace"
                 :task (clojure "-M:poly check")}
   info         {:doc "Show the Polylith workspace"
