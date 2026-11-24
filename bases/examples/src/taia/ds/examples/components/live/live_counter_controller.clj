@@ -8,9 +8,10 @@
      no signals, so it brings the count as its params, and INCREMENT starts
      from that. Its render is pushed down the tab's stream; the render's
      `data-signals` update the tab's store, so the next click carries it."
-  (:refer-clojure :exclude [reset!])
   (:require
-   [taia.ds.datastar.interface :as ds]))
+   [hyperfiddle.rcf :refer [tests]]
+   [taia.ds.datastar.interface :as ds]
+   [taia.ds.state-machines.interface.test-helpers :refer [test-machine]]))
 
 (defn- seed [ctx _] (update-in ctx [:memory :count] #(or % 0)))
 
@@ -29,41 +30,52 @@
                               :INCREMENT {:actions increment}
                               :RESET     {:actions reset}}}}})
 
-(defn- send-through-any-tab!
-  "Sends `event-name` with `params` through the flow of the first tab
-   connected under `component-id` that takes it. Returns that tab's user-id,
-   or nil when no tab is open."
-  [component-id event-name params]
-  (some (fn [user-id]
-          (when (ds/send-event! component-id user-id event-name params)
-            user-id))
-        (get (ds/connections) component-id)))
+;;; the actions
 
-;; REPL helpers: server events into an open tab's flow. A server event has no
-;; signals, so the REPL sends the memory itself, as params. No user-id needed.
-;; Each returns the user-id it went through, or nil when no tab is open.
+(tests
+ "seed: a fresh store starts the count at 0"
+ (seed {:memory {}} {}) := {:memory {:count 0}}
 
-(defn inc!
-  "+1 on `count` (INCREMENT with {:count count}): the tab then shows count + 1."
-  ([count] (inc! "live1" count))
-  ([component-id count] (send-through-any-tab! component-id "increment" {:count count})))
+ "seed: a count already in the store survives (a reconnect, a second INIT)"
+ (seed {:memory {:count 7}} {}) := {:memory {:count 7}}
 
-(defn reset!
-  "Back to 0 (RESET). Shadows `clojure.core/reset!` in this namespace only."
-  ([] (reset! "live1"))
-  ([component-id] (send-through-any-tab! component-id "reset" {})))
+ "increment, a click: +1 on the count in the tab's memory"
+ (increment {:memory {:count 2}} {}) := {:memory {:count 3}}
 
+ "increment, a server event: +1 on the count its params bring (it has no signals)"
+ (increment {:memory {}} {:count 2}) := {:memory {:count 3}}
+
+ "increment: the params' count wins over the memory's"
+ (increment {:memory {:count 9}} {:count 2}) := {:memory {:count 3}}
+
+ "increment: no count anywhere counts from 0"
+ (increment {:memory {}} {}) := {:memory {:count 1}}
+
+ "reset: back to 0"
+ (reset {:memory {:count 5}} {}) := {:memory {:count 0}})
+
+;;; the machine: per state and event, the target and the trace of actions.
+;;; test-machine runs no action (their behaviour is tested above), it only
+;;; records their names.
+
+(tests
+ "every event stays in :displayed and runs its action"
+ (test-machine
+  {:displayed {:INIT      {:target :displayed :trace [:seed]}
+               :INCREMENT {:target :displayed :trace [:increment]}
+               :RESET     {:target :displayed :trace [:reset]}}}
+  machine)
+ := :ok)
+
+;; From the REPL: a server event into an open tab's flow is `ds/send-event!`
+;; — component-id, user-id, event, params. It has no signals, so it sends the
+;; memory itself as params.
 (comment
-  ;; REPL, with the app running ((user/start!) or `bb dev`) and the page open:
+  ;; With the app running ((user/start!) or `bb dev`) and the page open:
   ;;   http://localhost:7788/ds/nds/home.home/home/init?example=live-counter
   ;; That tab is "demo-user" (no `&user=`).
   (ds/connections) ; => {"live1" ["demo-user"] …}
 
-  ;; a server event has no signals: send the memory as params
   (ds/send-event! "live1" "demo-user" "increment" {:count 2}) ; the tab shows 3
   (ds/send-event! "live1" "demo-user" "reset" {})             ; back to 0
-
-  ;; the same through the helpers, which pick an open tab for you
-  (inc! 2)
-  (reset!)
   )
