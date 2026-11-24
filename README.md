@@ -23,11 +23,12 @@ server can send it events too (`send-event!`):
 ![A component is a flow: a click's event travels in-chan → controller → view → out-chan back into the page; a connected component's flow also takes server events](docs/img/component-flow.gif)
 
 A connected component's flow has two ways in, through the same in-chan. On the live counter, a
-click POSTs +1 and gets the render back; the REPL's `(inc!)`, which is
-`(ds/send-event! "live1" "demo-user" "increment" {})`, sends the same event, the same controller
-code runs, and the new value goes down the page's open SSE stream, with no click and no request:
+click POSTs +1 with the tab's signals and gets the render back; from the REPL,
+`(ds/send-event! "live1" "demo-user" "increment" {:count 2})` sends the same event with the memory
+as params, the same controller code runs, and the new value goes down the page's open SSE stream,
+with no click and no request:
 
-![The live counter: a click and the REPL's (inc!) both send :INCREMENT through the same in-chan; the same controller and view run; the count goes 1, 2, 3 and the last render arrives over the open SSE stream](docs/img/repl-event-flow.gif)
+![The live counter: a click and a REPL send-event! both send :INCREMENT through the same in-chan; the click carries the tab's signals, the REPL sends the memory as params; the count goes 1, 2, 3 and the last render arrives over the open SSE stream](docs/img/repl-event-flow.gif)
 
 (Both are generated: [`scripts/component_flow_svg.clj`](scripts/component_flow_svg.clj) writes the
 animated SVGs in [`docs/img/`](docs/img/), and `bb component-flow-gif` renders the GIFs. The click in
