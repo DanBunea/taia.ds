@@ -1,7 +1,7 @@
 {:description  "A taia.ds web app: Polylith workspace, async Jetty, bb dev, counter + live counter"
  ;; the taia.ds release the generated app depends on: bump with every release,
  ;; next to the README pin (bb template-test checks they agree)
- :taia-version "0.3.1"
+ :taia-version "0.3.2"
  :port         7788
  :nrepl-port   7789
  :e2e-port     7799   ; where `bb e2e-test` starts its own copy of the app

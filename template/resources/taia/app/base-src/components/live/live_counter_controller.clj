@@ -11,7 +11,7 @@
   (:require
    [hyperfiddle.rcf :refer [tests]]
    [taia.ds.datastar.interface :as ds]
-   [taia.ds.state-machines.test-helpers :refer [test-machine]]))
+   [taia.ds.state-machines.interface.test-helpers :refer [test-machine]]))
 
 (defn- seed [ctx _] (update-in ctx [:memory :count] #(or % 0)))
 

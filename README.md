@@ -3,7 +3,7 @@
 Datastar + XState-style state machines + Clojure: an opinionated, component-based library for server-side UI.
 
 ```clojure
-io.github.danbunea/taia.ds {:mvn/version "0.3.1"}
+io.github.danbunea/taia.ds {:mvn/version "0.3.2"}
 ```
 
 Or start a new application from the [`taia/app` template](docs/new-project.md). It sets up a Polylith
@@ -296,7 +296,7 @@ published. `build.clj` inlines the bricks into one jar whose pom lists Maven lib
 3. Bump the version pin in this README, `docs/getting-started.md` and `:taia-version` in
    `template/resources/taia/app/template.edn` (`bb template-test` checks that the template and README
    agree).
-4. `bb deploy` (optionally `bb deploy :version '"0.3.1"'`), then tag `v<version>`. The tag also pins
+4. `bb deploy` (optionally `bb deploy :version '"0.3.2"'`), then tag `v<version>`. The tag also pins
    the template: `…%template%taia/app#v<version>`.
 
 ## Migrating from the in-app namespaces

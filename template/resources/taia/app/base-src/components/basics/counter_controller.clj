@@ -10,7 +10,7 @@
    `test-machine` — which event runs which action, and where it lands."
   (:require
    [hyperfiddle.rcf :refer [tests]]
-   [taia.ds.state-machines.test-helpers :refer [test-machine]]))
+   [taia.ds.state-machines.interface.test-helpers :refer [test-machine]]))
 
 (defn seed      [ctx _] (update-in ctx [:memory :count] #(or % 0)))
 (defn increment [ctx _] (update-in ctx [:memory :count] inc))
