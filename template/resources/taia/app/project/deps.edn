@@ -1,0 +1,12 @@
+;; The deployable application: the web base + its libraries.
+;; bb uberjar → target/{{main}}.jar (java -jar …, PORT env var, default {{port}})
+{:deps {poly/web {:local/root "../../bases/web"}
+
+        org.clojure/clojure        {:mvn/version "1.12.6"}
+        io.github.danbunea/taia.ds {:mvn/version "{{taia-version}}"}
+        metosin/reitit             {:mvn/version "0.7.2"}
+        ring/ring-jetty-adapter    {:mvn/version "1.15.0"}
+        org.slf4j/slf4j-simple     {:mvn/version "2.0.17"}}
+
+ :aliases {:build {:deps {io.github.clojure/tools.build {:mvn/version "0.10.14"}}
+                   :ns-default build}}}

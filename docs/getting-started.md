@@ -5,6 +5,19 @@ machine**; the browser holds the component's state as [Datastar](https://data-st
 sends them back with every event, and morphs the server's answer into the page. Long-lived
 components keep an SSE stream open so the server can push.
 
+## 0. Or generate a project
+
+One command gives you everything below, already wired, in a new Polylith workspace with the counter
+and live counter in it. See [Start a new project](new-project.md):
+
+```shell
+clojure -Tnew create :template io.github.danbunea/taia.ds%template%taia/app :name acme/shop
+cd shop && bb dev
+```
+
+The rest of this page is what the template does, step by step, for adding taia.ds to an existing
+application.
+
 ## 1. Add the dependency
 
 ```clojure

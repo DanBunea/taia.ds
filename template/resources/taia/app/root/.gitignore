@@ -1,0 +1,11 @@
+**/target
+**/.cpcache
+**/classes
+.nrepl-port
+.lsp/
+.clj-kondo/.cache
+.portal/
+.calva/
+.idea/
+*.iml
+.DS_Store

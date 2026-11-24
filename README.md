@@ -6,6 +6,16 @@ Datastar + XState-style state machines + Clojure: an opinionated, component-base
 io.github.danbunea/taia.ds {:mvn/version "0.3.1"}
 ```
 
+Or start a new application from the [`taia/app` template](docs/new-project.md). It sets up a Polylith
+workspace with async Jetty, `bb dev` with an nREPL, tests, an uberjar, and the counter and live counter
+ready to edit:
+
+```shell
+clojure -Ttools install-latest :lib io.github.seancorfield/deps-new :as new   # once
+clojure -Tnew create :template io.github.danbunea/taia.ds%template%taia/app :name acme/shop
+cd shop && bb dev
+```
+
 Server-side UI components over [Datastar](https://data-star.dev/) SSE, LiveView-style, for Clojure/Ring.
 A component is a pure render function `(fn [ctx] -> hiccup)` plus an XState-style hierarchical state machine; the
 browser round-trips the component's signals (`:memory`, `:state`) as JSON, the server runs the
@@ -174,6 +184,8 @@ The same articles render on cljdoc once the jar is on Clojars (`doc/cljdoc.edn`)
 
 ## Wiring it into an application
 
+The [`taia/app` template](docs/new-project.md) generates all of this. This section is what it does by hand.
+
 The library ships no routes: your base owns them. Mount the three handlers on these three shapes
 (reitit shown; any router that sets `:path-params` works):
 
@@ -265,6 +277,7 @@ bb check         # poly check
 bb info          # poly info
 bb dev           # examples app on port 7788, prints the examples URL (nREPL on 7789)
 bb api-index     # regenerate docs/api.md from the interface namespaces
+bb template-test # generate a project from template/ and run its bb test, bb check, bb uberjar + a jar smoke test
 bb format        # cljfmt
 bb jar           # target/taia.ds-<version>.jar  (version = 0.1.<git commit count>, or :version "x.y.z")
 bb install       # into ~/.m2
@@ -280,7 +293,11 @@ published. `build.clj` inlines the bricks into one jar whose pom lists Maven lib
 1. Verify the `io.github.danbunea` group once on Clojars: create a public GitHub repository named
    `clojars-danbunea` (see [Verified Group Names](https://github.com/clojars/clojars-web/wiki/Verified-Group-Names)).
 2. Create a Clojars deploy token and export `CLOJARS_USERNAME` and `CLOJARS_PASSWORD` (the token).
-3. `bb deploy` (optionally `bb deploy :version '"0.3.1"'`), then tag `v<version>`.
+3. Bump the version pin in this README, `docs/getting-started.md` and `:taia-version` in
+   `template/resources/taia/app/template.edn` (`bb template-test` checks that the template and README
+   agree).
+4. `bb deploy` (optionally `bb deploy :version '"0.3.1"'`), then tag `v<version>`. The tag also pins
+   the template: `…%template%taia/app#v<version>`.
 
 ## Migrating from the in-app namespaces
 

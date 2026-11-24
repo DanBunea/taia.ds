@@ -4,6 +4,7 @@
  :cljdoc.doc/tree
  [["Readme" {:file "README.md"}]
   ["Getting started" {:file "docs/getting-started.md"}]
+  ["Start a new project" {:file "docs/new-project.md"}]
   ["Components" {:file "docs/components.md"}]
   ["State machines" {:file "docs/state-machines.md"}]
   ["Connected components and push" {:file "docs/connected-components.md"}]

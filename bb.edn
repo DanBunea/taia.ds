@@ -27,6 +27,8 @@
                 :task (shell "cljfmt fix")}
   format:check {:doc "Check formatting"
                 :task (shell "cljfmt check")}
+  template-test {:doc "Generate a project from the deps-new template (template/) into target/template-test and run its bb test, bb check, bb uberjar + a jar smoke test. bb template-test [taia-version]"
+                 :task (load-file "scripts/template_test.clj")}
   e2e-test     {:doc "Playwright end-to-end suite against the examples app. Usage: bb e2e-test [spec] [--headed]; needs Node >= 18"
                 :task (load-file "scripts/e2e.clj")}
   flow-gif     {:doc "Re-render docs/img/counter-flow.gif from the animated SVG (needs e2e deps: npm ci in e2e/)"

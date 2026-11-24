@@ -1,0 +1,19 @@
+{:tasks
+ {dev          {:doc "Start the app on port {{port}} and print its URL (nREPL on {{nrepl-port}})"
+                :task (clojure "-M:dev -m dev")}
+  test         {:doc "Run the unit tests (Kaocha + RCF inline tests)"
+                :task (clojure "-M:dev:test")}
+  check        {:doc "Validate the Polylith workspace"
+                :task (clojure "-M:poly check")}
+  info         {:doc "Show the Polylith workspace"
+                :task (clojure "-M:poly info")}
+  format       {:doc "Format all source files (needs cljfmt on the PATH)"
+                :task (shell "cljfmt fix")}
+  format:check {:doc "Check formatting (needs cljfmt on the PATH)"
+                :task (shell "cljfmt check")}
+  ;; shadows bb's built-in `bb uberjar` (which packages bb scripts, not this app)
+  uberjar      {:doc "Build projects/{{main}}/target/{{main}}.jar"
+                :override-builtin true
+                :task (clojure {:dir "projects/{{main}}"} "-T:build uber")}
+  run-server   {:doc "Run the uberjar (PORT env var, default {{port}})"
+                :task (shell "java -jar projects/{{main}}/target/{{main}}.jar")}}}

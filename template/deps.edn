@@ -1,0 +1,8 @@
+;; The deps-new template `taia/app` — a new taia.ds application in one command:
+;;
+;;   clojure -Tnew create :template io.github.danbunea/taia.ds%template%taia/app :name acme/shop
+;;
+;; Not on any classpath of this workspace (poly, kaocha and cljfmt never see
+;; it): its sources carry {{…}} placeholders. `bb template-test` generates a
+;; project from it and runs that project's tests, poly check and uberjar.
+{:paths ["resources"]}

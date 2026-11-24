@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A deps-new template, `taia/app`. `clojure -Tnew create :template io.github.danbunea/taia.ds%template%taia/app :name acme/shop` generates a Polylith workspace with async Jetty, reitit, `bb dev` with an nREPL, RCF tests, `poly check`, an uberjar (`bb uberjar`), and the counter and live counter ready to edit. See `docs/new-project.md`. `bb template-test` generates a project and runs its checks.
+
 ## 0.3.1 — 2026-11-24
 
 A docs release: the library code is the same as 0.3.0.
