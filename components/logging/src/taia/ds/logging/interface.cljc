@@ -1,6 +1,7 @@
 (ns taia.ds.logging.interface
   (:require
    [hyperfiddle.rcf :refer [tests]]
+   [spy.core :as spy]
    #?(:clj [clojure.core :as core])
    #?(:clj [com.brunobonacci.mulog :as u])))
 
@@ -121,12 +122,45 @@
     (cond-> kept
       (seq dropped) (assoc :_dropped (mapv str dropped)))))
 
+;;; Tests — sanitize-map: each kept value goes through sanitize (a spy here;
+;;; tested below).
+
+(tests
+ "sanitize-map: drops the heavy keys, records them under :_dropped, and
+  sanitizes the values it keeps"
+ (with-redefs [sanitize (spy/spy (fn [v] [:sanitized v]))]
+   (sanitize-map {:db :A :conn :B :user "u"})
+   := {:user [:sanitized "u"] :_dropped [":db" ":conn"]}
+   (spy/called-once-with? sanitize "u") := true)
+
+ "sanitize-map: nothing dropped → no :_dropped"
+ (with-redefs [sanitize (spy/spy (fn [v] [:sanitized v]))]
+   (sanitize-map {:user "u"}) := {:user [:sanitized "u"]}))
+
 (defn- sanitize-coll
   [xs]
   (let [head (mapv sanitize (take 3 xs))]
     (if (> (bounded-count 4 xs) 3)
       (conj head "...")
       head)))
+
+;;; Tests — sanitize-coll: each kept element goes through sanitize (a spy).
+
+(tests
+ "sanitize-coll: up to 3 elements → each sanitized"
+ (with-redefs [sanitize (spy/spy (fn [v] [:sanitized v]))]
+   (sanitize-coll [1 2 3]) := [[:sanitized 1] [:sanitized 2] [:sanitized 3]])
+
+ "sanitize-coll: more than 3 → the first 3 sanitized, then \"...\"; the rest
+  is never sanitized"
+ (with-redefs [sanitize (spy/spy (fn [v] [:sanitized v]))]
+   (sanitize-coll [1 2 3 4 5]) := [[:sanitized 1] [:sanitized 2] [:sanitized 3] "..."]
+   (spy/calls sanitize) := [[1] [2] [3]])
+
+ "sanitize-coll: a lazy seq is not realized beyond its head (an infinite one
+  returns)"
+ (with-redefs [sanitize (spy/spy (fn [v] [:sanitized v]))]
+   (sanitize-coll (range)) := [[:sanitized 0] [:sanitized 1] [:sanitized 2] "..."]))
 
 (defn- sanitize
   "Recursively shrinks v: drops heavy map keys, truncates collections >3,
@@ -144,11 +178,48 @@
     (number? v)     v
     :else           (pr-str v)))
 
+;;; Tests — sanitize: scalars it encodes itself; maps and collections it hands
+;;; to sanitize-map / sanitize-coll (spies; tested above).
+
+(tests
+ "sanitize: nil, strings, booleans and numbers pass through"
+ (sanitize nil) := nil
+ (sanitize "hi") := "hi"
+ (sanitize true) := true
+ (sanitize 42) := 42
+
+ "sanitize: a keyword → its string"
+ (sanitize :foo/bar) := ":foo/bar"
+
+ "sanitize: any other value → its pr-str"
+ (sanitize 'sym) := "sym"
+
+ "sanitize: a map → sanitize-map"
+ (with-redefs [sanitize-map  (spy/spy (constantly :from-map))
+               sanitize-coll (spy/spy)]
+   (sanitize {:user "u"}) := :from-map
+   (spy/called-once-with? sanitize-map {:user "u"}) := true
+   (spy/not-called? sanitize-coll) := true)
+
+ "sanitize: a vector, a seq or a set → sanitize-coll"
+ (with-redefs [sanitize-coll (spy/spy (constantly :from-coll))]
+   (sanitize [1 2]) := :from-coll
+   (sanitize '(1 2)) := :from-coll
+   (sanitize #{1}) := :from-coll
+   (spy/calls sanitize-coll) := [[[1 2]] ['(1 2)] [#{1}]]))
+
 (defn- truncate-str
   [^String s max-chars]
   (if (> (count s) max-chars)
     (str (subs s 0 max-chars) "…<truncated>")
     s))
+
+(tests
+ "truncate-str: at most max-chars → unchanged"
+ (truncate-str "abc" 3) := "abc"
+
+ "truncate-str: longer → the first max-chars, then …<truncated>"
+ (truncate-str "abcdef" 3) := "abc…<truncated>")
 
 (defn safe-for-log
   "Returns a single log-safe **string** representation of v, suitable as
@@ -166,43 +237,20 @@
   [v]
   (-> v sanitize pr-str (truncate-str safe-for-log-max-chars)))
 
+;;; Tests — safe-for-log: sanitize, pr-str, cap. sanitize and truncate-str are
+;;; spies (tested above).
+
 (tests
- "safe-for-log: always returns a string"
- (string? (safe-for-log nil))                := true
- (string? (safe-for-log "hi"))               := true
- (string? (safe-for-log 42))                 := true
- (string? (safe-for-log {:user "u"}))        := true
- (string? (safe-for-log [1 2 3 4 5]))        := true
- (string? (safe-for-log #{1 2 3 4 5}))       := true
+ "safe-for-log: sanitizes v, pr-strs the result, and caps it at
+  safe-for-log-max-chars"
+ (with-redefs [sanitize     (spy/spy (constantly {:user "u" :_dropped [":db"]}))
+               truncate-str (spy/spy (constantly "capped"))]
+   (safe-for-log {:db :A :user "u"}) := "capped"
+   (spy/called-once-with? sanitize {:db :A :user "u"}) := true
+   (spy/called-once-with? truncate-str "{:user \"u\", :_dropped [\":db\"]}" safe-for-log-max-chars) := true)
 
- "safe-for-log: encodes scalars via pr-str"
- (safe-for-log nil)   := "nil"
- (safe-for-log "hi")  := "\"hi\""
- (safe-for-log 42)    := "42"
- (safe-for-log true)  := "true"
- (safe-for-log :foo/bar) := "\":foo/bar\""
-
- "safe-for-log: drops heavy keys and records :_dropped in the encoded map"
- (let [s (safe-for-log {:db :A :conn :B :user "u"})]
-   (clojure.string/includes? s ":user \"u\"")  := true
-   (clojure.string/includes? s ":_dropped")    := true
-   (clojure.string/includes? s "\":db\"")      := true        ;; only inside :_dropped vec
-   (clojure.string/includes? s "\":conn\"")    := true
-   ;; heavy values themselves are gone
-   (clojure.string/includes? s ":A")           := false
-   (clojure.string/includes? s ":B")           := false)
-
- "safe-for-log: omits :_dropped when nothing was dropped"
- (re-find #":_dropped" (safe-for-log {:user "u"})) := nil
-
- "safe-for-log: truncates collections > 3 elements"
- (clojure.string/includes? (safe-for-log [1 2 3 4 5]) "\"...\"") := true
-
- "safe-for-log: handles lazy seqs without realizing them"
- (string? (safe-for-log (range 1000))) := true
-
- "safe-for-log: hard-caps oversized payloads"
- (let [big (apply str (repeat 20000 "x"))
-       out (safe-for-log {:big big})]
-   (<= (count out) (+ safe-for-log-max-chars 32))           := true
-   (boolean (re-find #"…<truncated>" out))                  := true))
+ "safe-for-log: a scalar is pr-str'd too, so the result is always a string"
+ (with-redefs [sanitize     (spy/spy (constantly nil))
+               truncate-str (spy/spy (fn [s _] s))]
+   (safe-for-log nil) := "nil"
+   (spy/called-once-with? truncate-str "nil" safe-for-log-max-chars) := true))

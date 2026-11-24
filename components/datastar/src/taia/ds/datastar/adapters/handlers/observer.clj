@@ -126,85 +126,184 @@
               :component (:component token)
               :seconds   (seconds-since (:started token))})))
 
-(def ^:private test-machine
-  {:id :t :initial :idle
-   :on {:GLOBAL :idle}
-   :states {:idle {:on {:INIT :idle :SEND {:target :busy}}}
-            :busy {:states {:inner {:on {:DONE :idle}}}}}})
+;;; Tests. Each case installs its own observer with
+;;; `(with-redefs [!observer (atom …)] …)`, so none depends on (or leaks) the
+;;; global one — RCF also runs in a live `bb dev` on ns load.
+
+(tests
+ "set-observer!: installs the fn, returns nil"
+ (with-redefs [!observer (atom nil)]
+   (set-observer! identity) := nil
+   @!observer := identity)
+
+ "set-observer!: nil removes the observer"
+ (with-redefs [!observer (atom identity)]
+   (set-observer! nil) := nil
+   @!observer := nil))
+
+(tests
+ "notify!: the observer gets the observation"
+ (with-redefs [!observer (atom (spy/spy))]
+   (notify! {:type :sse-opened :component "a"})
+   (spy/called-once-with? @!observer {:type :sse-opened :component "a"}) := true)
+
+ "notify!: no observer → nothing happens, nil"
+ (with-redefs [!observer (atom nil)]
+   (notify! {:type :sse-opened :component "a"}) := nil)
+
+ "notify!: a failing observer is swallowed (logged) — metrics never fail a request"
+ (with-redefs [!observer (atom (fn [_] (throw (ex-info "observer down" {}))))]
+   (notify! {:type :sse-opened :component "a"}) := nil))
 
 (tests
  "machine-events*: :on keys at every depth, as names"
- (machine-events* test-machine) := #{"GLOBAL" "INIT" "SEND" "DONE"}
+ (machine-events* {:id :t :initial :idle
+                   :on {:GLOBAL :idle}
+                   :states {:idle {:on {:INIT :idle :SEND {:target :busy}}}
+                            :busy {:states {:inner {:on {:DONE :idle}}}}}})
+ := #{"GLOBAL" "INIT" "SEND" "DONE"}
 
- "labels: a component discovery never resolved → unknown/other, without
+ "machine-events*: a machine with no :on anywhere → #{}"
+ (machine-events* {:id :t :initial :idle :states {:idle {}}}) := #{})
+
+(tests
+ ;; discovery hands out the machine as a var, which discovered-machine derefs
+ (def ^:private chat-machine {:id :chat :initial :idle :states {:idle {:on {:INIT :idle}}}})
+
+ "discovered-machine: a component discovery never resolved → nil, without
   calling discovery (the cache is the gate)"
- (with-redefs [cache/cached (constantly nil)
+ (with-redefs [cache/cached                 (spy/spy (constantly nil))
                discovery/discover-component (spy/spy)]
-   (labels :evil.thing "c1" "WHATEVER")
-   := {:component "_unknown" :event "_other"}
+   (discovered-machine :evil.thing "c1") := nil
+   (spy/called-once-with? cache/cached ["evil.thing" "c1"]) := true
    (spy/not-called? discovery/discover-component) := true)
 
- "labels: resolved component — declared events (any case) keep their name,
-  undeclared ones collapse to _other"
- (def test-machine-var (var test-machine))
- (with-redefs [cache/cached (constantly {:controller-ns 'x :component-ns 'y})
-               discovery/discover-component (constantly {:machine test-machine-var})]
+ "discovered-machine: a resolved component → its machine (the var's value)"
+ (with-redefs [cache/cached                 (spy/spy (constantly {:controller-ns 'x :component-ns 'y}))
+               discovery/discover-component (spy/spy (constantly {:machine #'chat-machine}))]
+   (discovered-machine :chat.chat nil) := {:id :chat :initial :idle :states {:idle {:on {:INIT :idle}}}}
+   (spy/called-once-with? cache/cached ["chat.chat" nil]) := true
+   (spy/called-once-with? discovery/discover-component :chat.chat nil) := true)
+
+ "discovered-machine: discovery throwing (the namespace went away) → nil"
+ (with-redefs [cache/cached                 (constantly {:controller-ns 'x :component-ns 'y})
+               discovery/discover-component (fn [& _] (throw (ex-info "gone" {})))]
+   (discovered-machine :chat.chat nil) := nil))
+
+(tests
+ "labels: no discovered machine → unknown component, other event"
+ (with-redefs [discovered-machine (spy/spy (constantly nil))]
+   (labels :evil.thing "c1" "WHATEVER") := {:component "_unknown" :event "_other"}
+   (spy/called-once-with? discovered-machine :evil.thing "c1") := true)
+
+ "labels: a declared event (any case) keeps its upper-case name"
+ (with-redefs [discovered-machine (spy/spy (constantly {:id :t :initial :idle
+                                                        :states {:idle {:on {:INIT :idle}}}}))]
    (labels :chat.chat nil "init") := {:component "chat.chat" :event "INIT"}
-   (labels :chat.chat nil "DONE") := {:component "chat.chat" :event "DONE"}
-   (labels :chat.chat nil "RENDERER.foo") := {:component "chat.chat" :event "_other"})
+   (spy/called-once-with? discovered-machine :chat.chat nil) := true)
 
- "observe-event!: no observer → just calls f. (These tests swap the global
-  observer — RCF also runs in a live `bb dev` on ns load — so the installed
-  one is restored at the end.)"
- (def prior-observer @!observer)
- (set-observer! nil)
- (observe-event! :nds :chat.chat nil "INIT" (constantly ::r)) := ::r
+ "labels: a declared event in a nested state keeps its name"
+ (with-redefs [discovered-machine (constantly {:id :t :initial :idle
+                                               :states {:idle {:on {:INIT :idle}}
+                                                        :busy {:states {:inner {:on {:DONE :idle}}}}}})]
+   (labels :chat.chat nil "DONE") := {:component "chat.chat" :event "DONE"})
 
- "observe-event!: ok result → one :event observation with bounded labels"
- (def obs (spy/spy))
- (set-observer! obs)
- (with-redefs [labels (constantly {:component "chat.chat" :event "INIT"})]
-   (observe-event! :nds :chat.chat nil "INIT" (constantly {:status 200})))
- := {:status 200}
- (dissoc (ffirst (spy/calls obs)) :seconds)
- := {:type :event :route :nds :outcome :ok :component "chat.chat" :event "INIT"}
- (number? (:seconds (ffirst (spy/calls obs)))) := true
+ "labels: an undeclared event collapses to _other"
+ (with-redefs [discovered-machine (constantly {:id :t :initial :idle
+                                               :states {:idle {:on {:INIT :idle}}}})]
+   (labels :chat.chat nil "RENDERER.foo") := {:component "chat.chat" :event "_other"}))
 
- "observe-event!: a 4xx/5xx response is an :error"
- (def obs2 (spy/spy))
- (set-observer! obs2)
- (with-redefs [labels (constantly {:component "_unknown" :event "_other"})]
-   (observe-event! :nds :nope nil "X" (constantly {:status 400})))
- (:outcome (ffirst (spy/calls obs2))) := :error
+(tests
+ "seconds-since: the seconds elapsed since a System/nanoTime reading"
+ (-> (System/nanoTime)
+     (- 1000000000)
+     seconds-since
+     (<= 60.0))
+ := true
+ (-> (System/nanoTime)
+     (- 1000000000)
+     seconds-since
+     (>= 1.0))
+ := true
 
- "observe-event!: a throw is reported as :error and rethrown"
- (def obs3 (spy/spy))
- (set-observer! obs3)
- (with-redefs [labels (constantly {:component "home.home" :event "INIT"})]
-   (try (observe-event! :nds-connect :home.home nil "INIT" #(throw (ex-info "boom" {})))
-        (catch Exception e (ex-message e))))
- := "boom"
- (select-keys (ffirst (spy/calls obs3)) [:route :outcome]) := {:route :nds-connect :outcome :error}
+ "error-response?: a Ring response with status >= 400"
+ (error-response? {:status 400}) := true
+ (error-response? {:status 500}) := true
 
- "observe-event!: a failing observer never fails the request"
- (set-observer! (fn [_] (throw (ex-info "observer down" {}))))
- (with-redefs [labels (constantly {:component "a" :event "B"})]
-   (observe-event! :nds :a nil "B" (constantly ::still-served)))
- := ::still-served
+ "error-response?: a 2xx/3xx, a map without :status, or not a map → false"
+ (error-response? {:status 200}) := false
+ (error-response? {:status 302}) := false
+ (error-response? {:body "x"}) := false
+ (error-response? ::anything) := false
+ (error-response? nil) := false)
 
- "connection-opened!/closed!: the same label on both sides, lifetime on close"
- (def obs4 (spy/spy))
- (set-observer! obs4)
- (def token (with-redefs [labels (constantly {:component "home.home" :event "_other"})]
-              (connection-opened! :home.home (System/nanoTime))))
- (connection-closed! token)
- (mapv (comp #(dissoc % :seconds) first) (spy/calls obs4))
- := [{:type :sse-opened :component "home.home"}
-     {:type :sse-closed :component "home.home"}]
- (number? (:seconds (first (second (spy/calls obs4))))) := true
+(tests
+ "observe-event!: no observer → just calls f; nothing is labelled or reported"
+ (with-redefs [!observer (atom nil)
+               labels    (spy/spy)
+               notify!   (spy/spy)]
+   (observe-event! :nds :chat.chat nil "INIT" (constantly ::r)) := ::r
+   (spy/not-called? labels) := true
+   (spy/not-called? notify!) := true)
 
- "connection-opened!: no observer → nil token, closed! on nil is a no-op"
- (set-observer! nil)
- (connection-opened! :home.home (System/nanoTime)) := nil
- (connection-closed! nil) := nil
- (set-observer! prior-observer))
+ "observe-event!: an ok result is returned, and reported as one :ok :event
+  observation with its duration and bounded labels"
+ (with-redefs [!observer     (atom identity)
+               labels        (spy/spy (constantly {:component "chat.chat" :event "INIT"}))
+               seconds-since (constantly 0.5)
+               notify!       (spy/spy)]
+   (observe-event! :nds :chat.chat nil "INIT" (constantly {:status 200})) := {:status 200}
+   (spy/called-once-with? labels :chat.chat nil "INIT") := true
+   (spy/called-once-with? notify! {:type :event :route :nds :outcome :ok :seconds 0.5
+                                   :component "chat.chat" :event "INIT"})
+   := true)
+
+ "observe-event!: a 4xx/5xx response is returned, reported as an :error"
+ (with-redefs [!observer     (atom identity)
+               labels        (constantly {:component "_unknown" :event "_other"})
+               seconds-since (constantly 0.5)
+               notify!       (spy/spy)]
+   (observe-event! :nds :nope nil "X" (constantly {:status 400})) := {:status 400}
+   (spy/called-once-with? notify! {:type :event :route :nds :outcome :error :seconds 0.5
+                                   :component "_unknown" :event "_other"})
+   := true)
+
+ "observe-event!: a throw is rethrown, reported as an :error"
+ (with-redefs [!observer     (atom identity)
+               labels        (constantly {:component "home.home" :event "INIT"})
+               seconds-since (constantly 0.5)
+               notify!       (spy/spy)]
+   (observe-event! :nds-connect :home.home nil "INIT" #(throw (ex-info "boom" {})))
+   :throws clojure.lang.ExceptionInfo
+   (spy/called-once-with? notify! {:type :event :route :nds-connect :outcome :error :seconds 0.5
+                                   :component "home.home" :event "INIT"})
+   := true))
+
+(tests
+ "connection-opened!: no observer → nil token, nothing reported"
+ (with-redefs [!observer (atom nil)
+               notify!   (spy/spy)]
+   (connection-opened! :home.home 42) := nil
+   (spy/not-called? notify!) := true)
+
+ "connection-opened!: reports :sse-opened under the component label and
+  returns the token for close (the label, the start)"
+ (with-redefs [!observer (atom identity)
+               labels    (spy/spy (constantly {:component "home.home" :event "_other"}))
+               notify!   (spy/spy)]
+   (connection-opened! :home.home 42) := {:component "home.home" :started 42}
+   (spy/called-once-with? labels :home.home nil nil) := true
+   (spy/called-once-with? notify! {:type :sse-opened :component "home.home"}) := true)
+
+ "connection-closed!: reports :sse-closed under the token's label, with the
+  stream's lifetime"
+ (with-redefs [seconds-since (spy/spy (constantly 12.5))
+               notify!       (spy/spy)]
+   (connection-closed! {:component "home.home" :started 42})
+   (spy/called-once-with? seconds-since 42) := true
+   (spy/called-once-with? notify! {:type :sse-closed :component "home.home" :seconds 12.5}) := true)
+
+ "connection-closed!: a nil token (no observer at open) is a no-op"
+ (with-redefs [notify! (spy/spy)]
+   (connection-closed! nil) := nil
+   (spy/not-called? notify!) := true))

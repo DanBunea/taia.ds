@@ -7,6 +7,7 @@ Polylith library: server-side UI components over Datastar SSE. Published as `io.
 ```shell
 bb test          # unit tests: Kaocha + RCF inline tests (clojure -M:dev:test)
 bb e2e-test      # Playwright suite vs the examples app on :7799 (scripts/e2e.clj; Node >= 18 via nvm); bb e2e-test <spec> [--headed]
+bb coverage      # unit tests under Cloverage → target/coverage/index.html; bb coverage <ns-prefix> reports only those nss
 bb check         # poly check (workspace validation)
 bb info          # poly info
 bb dev           # examples app on http://localhost:7788, nREPL on 7789

@@ -16,6 +16,15 @@
       ruresp/response
       (ruresp/content-type "text/html; charset=UTF-8")))
 
+(tests
+ "->html: hiccup → a 200 Ring response with the rendered HTML"
+ (->html [:div#foo "x"])
+ := {:status 200 :headers {"Content-Type" "text/html; charset=UTF-8"} :body "<div id=\"foo\">x</div>"}
+
+ "->html: the empty hiccup (an effects list with nothing to patch) → an empty body"
+ (->html [])
+ := {:status 200 :headers {"Content-Type" "text/html; charset=UTF-8"} :body ""})
+
 (defn- resolve-d* [x]
   (if (and (keyword? x) (= "d*" (namespace x)))
     @(ns-resolve 'starfederation.datastar.clojure.api (symbol (name x)))
@@ -26,6 +35,15 @@
         (map (fn [[k v]]
                [(resolve-d* k) (resolve-d* v)]))
         m))
+
+(tests
+ "to-d*: :d*/<name> keys and values resolve to the Datastar SDK's option
+  constants; anything else is kept as it is"
+ (to-d* {:d*/selector "#x" :d*/patch-mode :d*/patch-mode :foo 1})
+ := {d*/selector "#x" d*/patch-mode d*/patch-mode :foo 1}
+
+ "to-d*: nil / no opts → {}"
+ (to-d* nil) := {})
 
 (defn send-effect!
   "Dispatches a single effect to the SSE generator.
@@ -46,41 +64,24 @@
                         payload
                         (to-d* opts))))
 
-(def ^:private mock-sse-gen ::sse-gen)
-
 (tests
- ;; :patch calls patch-elements! with compiled HTML and resolved opts
- (with-redefs [d*/patch-elements! (spy/spy (fn [& _] true))]
-   (send-effect! mock-sse-gen [:patch [:div#foo "hello"] {}])
-   (spy/calls d*/patch-elements!) := [[mock-sse-gen "<div id=\"foo\">hello</div>" {}]])
+ ":patch → patch-elements! with the hiccup compiled to HTML and the opts resolved"
+ (with-redefs [d*/patch-elements! (spy/spy (constantly true))]
+   (send-effect! ::sse-gen [:patch [:div#foo "hello"] {:d*/selector "#foo"}])
+   (spy/called-once-with? d*/patch-elements! ::sse-gen "<div id=\"foo\">hello</div>" {d*/selector "#foo"}) := true)
 
- ;; :patch-signals calls patch-signals! with a JSON string; read back to compare as map
- (with-redefs [d*/patch-signals! (spy/spy (fn [& _] true))]
-   (send-effect! mock-sse-gen [:patch-signals {:counter 0} {}])
-   (spy/called-once? d*/patch-signals!) := true
-   (let [[_gen json _opts] (first (spy/calls d*/patch-signals!))]
-     (charred/read-json json :key-fn keyword)) := {:counter 0})
+ ":patch-signals → patch-signals! with the signals as a JSON string"
+ (with-redefs [d*/patch-signals! (spy/spy (constantly true))]
+   (send-effect! ::sse-gen [:patch-signals {:counter 0} {}])
+   (spy/called-once-with? d*/patch-signals! ::sse-gen "{\"counter\":0}" {}) := true)
 
- ;; :execute-script calls execute-script! with the script text
- (with-redefs [d*/execute-script! (spy/spy (fn [& _] true))]
-   (send-effect! mock-sse-gen [:execute-script "console.log('hi')" {}])
-   (spy/calls d*/execute-script!) := [[mock-sse-gen "console.log('hi')" {}]])
+ ":execute-script → execute-script! with the script text"
+ (with-redefs [d*/execute-script! (spy/spy (constantly true))]
+   (send-effect! ::sse-gen [:execute-script "console.log('hi')" {}])
+   (spy/called-once-with? d*/execute-script! ::sse-gen "console.log('hi')" {}) := true)
 
- ;; unknown effect type throws
- (try
-   (send-effect! mock-sse-gen [:unknown [:div] {}])
-   :no-throw
-   (catch IllegalArgumentException _ :thrown)) := :thrown
-
- ;; only :patch, :patch-signals, :execute-script entries pass the filter
- (mapv first
-       (filter #(#{:patch :patch-signals :execute-script} (first %))
-               [[:broadcast-elements! [:div] {}]
-                [:patch [:span#a "x"] {}]
-                [:broadcast-hide-loading "chat-1"]
-                [:patch-signals {:counter 1} {}]
-                [:execute-script "alert(1)" {}]]))
- := [:patch :patch-signals :execute-script])
+ "an unknown effect type throws"
+ (send-effect! ::sse-gen [:unknown [:div] {}]) :throws IllegalArgumentException)
 
 (defn send-responses
   "Sends all [:patch ...], [:patch-signals ...], and [:execute-script ...] effects
@@ -94,6 +95,48 @@
                                (d*/with-open-sse sse-gen
                                  (doseq [effect patch-effects]
                                    (send-effect! sse-gen effect))))})))
+
+(tests
+ (defn- on-open-fn
+   "The on-open callback send-responses handed ->sse-response."
+   [sse-response-spy]
+   (-> sse-response-spy
+       spy/first-call
+       second
+       (get on-open)))
+
+ "send-responses: a one-shot SSE response for the request"
+ (with-redefs [->sse-response (spy/spy (constantly ::sse-response))]
+   (send-responses {::r 1}
+                   [[:broadcast-elements! [:div] {}]
+                    [:patch [:span#a "x"] {}]
+                    [:broadcast-hide-loading "chat-1"]
+                    [:patch-signals {:counter 1} {}]
+                    [:execute-script "alert(1)" {}]])
+   := ::sse-response
+   (-> ->sse-response
+       spy/first-call
+       first)
+   := {::r 1})
+
+ "send-responses: once the stream opens, only the :patch / :patch-signals /
+  :execute-script effects are sent, in order (the rest are broadcast
+  elsewhere), and the stream is closed"
+ (with-redefs [->sse-response (spy/spy (constantly ::sse-response))
+               send-effect!   (spy/spy)
+               d*/close-sse!  (spy/spy)]
+   (send-responses {::r 1}
+                   [[:broadcast-elements! [:div] {}]
+                    [:patch [:span#a "x"] {}]
+                    [:broadcast-hide-loading "chat-1"]
+                    [:patch-signals {:counter 1} {}]
+                    [:execute-script "alert(1)" {}]])
+   ((on-open-fn ->sse-response) ::sse-gen)
+   (spy/calls send-effect!)
+   := [[::sse-gen [:patch [:span#a "x"] {}]]
+       [::sse-gen [:patch-signals {:counter 1} {}]]
+       [::sse-gen [:execute-script "alert(1)" {}]]]
+   (spy/called-once-with? d*/close-sse! ::sse-gen) := true))
 
 (defn component-responses?
   "Returns true if the component returned a list of effects rather than plain hiccup.
@@ -153,34 +196,28 @@
     :else                       (->html html)))
 
 (tests
- "render-response: html with patch effects → delegates to send-responses
-  with the original request and the effects list (no ->html call)"
- (with-redefs [send-responses (spy/spy (fn [_req _html] ::sse-response))
-               ->html         (spy/spy (fn [_html] ::http-response))]
-   (let [out (render-response {:request {::r 1}
-                               :html    [[:patch [:div "x"]]]})]
-     [out
-      (spy/calls send-responses)
-      (spy/not-called? ->html)])) := [::sse-response
-                                      [[{::r 1} [[:patch [:div "x"]]]]]
-                                      true]
+ "render-response: html with patch effects → send-responses with the request
+  and the effects list (no ->html)"
+ (with-redefs [send-responses (spy/spy (constantly ::sse-response))
+               ->html         (spy/spy (constantly ::http-response))]
+   (render-response {:request {::r 1} :html [[:patch [:div "x"]]]}) := ::sse-response
+   (spy/called-once-with? send-responses {::r 1} [[:patch [:div "x"]]]) := true
+   (spy/not-called? ->html) := true)
 
- "render-response: effects-shaped html with NO patch entries → empty body via
-  ->html [] (no SSE)"
- (with-redefs [send-responses (spy/spy (fn [_ _] ::sse-response))
-               ->html         (spy/spy (fn [_] ::http-response))]
-   (let [out (render-response {:request {}
-                               :html    [[:broadcast-elements [:div]]]})]
-     [out
-      (spy/not-called? send-responses)
-      (spy/calls ->html)])) := [::http-response true [[[]]]]
+ "render-response: effects-shaped html with NO patch entries → an empty body
+  via ->html [] (no SSE)"
+ (with-redefs [send-responses (spy/spy (constantly ::sse-response))
+               ->html         (spy/spy (constantly ::http-response))]
+   (render-response {:request {} :html [[:broadcast-elements [:div]]]}) := ::http-response
+   (spy/called-once-with? ->html []) := true
+   (spy/not-called? send-responses) := true)
 
  "render-response: plain hiccup → ->html with the hiccup verbatim"
- (with-redefs [send-responses (spy/spy (fn [_ _] ::sse-response))
-               ->html         (spy/spy (fn [_] ::http-response))]
-   (let [out (render-response {:request {}
-                               :html    [:div "x"]})]
-     [out (spy/calls ->html)])) := [::http-response [[[:div "x"]]]])
+ (with-redefs [send-responses (spy/spy (constantly ::sse-response))
+               ->html         (spy/spy (constantly ::http-response))]
+   (render-response {:request {} :html [:div "x"]}) := ::http-response
+   (spy/called-once-with? ->html [:div "x"]) := true
+   (spy/not-called? send-responses) := true))
 
 (defn error-response
   "The 400 a component event answers with when a step threw (or timed out):
@@ -197,3 +234,41 @@
               "Error message: " (.getMessage e) "\n"
               "Stack trace: " (with-out-str
                                 (.printStackTrace e (java.io.PrintWriter. *out*))))})
+
+(tests
+ (defn- without-stack-trace
+   "The response with its body cut before the (machine-specific) stack trace."
+   [resp]
+   (update resp :body #(first (clojure.string/split % #"Stack trace: "))))
+
+ "error-response: a plain-text 400 naming the error, component, instance,
+  event and controller"
+ (-> (ex-info "boom" {:k :v})
+     (error-response :counter "c1" "INCREMENT" "ctrl")
+     without-stack-trace)
+ := {:status  400
+     :headers {"Content-Type" "text/plain; charset=utf-8"}
+     :body    (str "Error processing component event: boom\n"
+                   "Component: :counter\n"
+                   "Component-ID: c1\n"
+                   "Event: INCREMENT\n"
+                   "Controller: ctrl\n"
+                   "Error message: boom\n")}
+
+ "error-response: no controller-name → no 'Controller:' line"
+ (-> (ex-info "boom" {:k :v})
+     (error-response :c "1" "E" nil)
+     without-stack-trace
+     :body)
+ := (str "Error processing component event: boom\n"
+         "Component: :c\n"
+         "Component-ID: 1\n"
+         "Event: E\n"
+         "Error message: boom\n")
+
+ "error-response: the body ends with the exception's stack trace"
+ (-> (ex-info "boom" {:k :v})
+     (error-response :c "1" "E" nil)
+     :body
+     (clojure.string/includes? "Stack trace: clojure.lang.ExceptionInfo: boom {:k :v}"))
+ := true)

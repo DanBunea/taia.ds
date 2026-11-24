@@ -1,0 +1,34 @@
+#kaocha/v1
+{:kaocha/tests
+ [{:kaocha.testable/type :kaocha.type/clojure.test
+   :kaocha.testable/id :unit
+   :kaocha/ns-patterns ["$"]
+   ;; RCF `(tests …)` blocks live inline in src, so src dirs are test paths too.
+   :kaocha/source-paths ["bases/examples/src"
+                         "components/datastar/src"
+                         "components/state-machines/src"
+                         "components/logging/src"
+                         "components/extensions/src"]
+   :kaocha/test-paths ["bases/examples/src"
+                       "bases/examples/test"
+                       "components/datastar/src"
+                       "components/datastar/test"
+                       "components/state-machines/src"
+                       "components/logging/src"
+                       "components/extensions/src"]
+   :kaocha.filter/skip-meta [:kaocha/skip]}]
+ :kaocha/fail-fast? false
+ :kaocha/color? true
+ :kaocha/cli-options {:config-file "coverage-tests.edn" :watch false}
+ :kaocha.plugin.randomize/randomize? true
+ :kaocha/plugins [:kaocha.plugin/cloverage
+                  :kaocha.plugin/randomize
+                  :kaocha.plugin/filter
+                  :kaocha.plugin/capture-output]
+ :kaocha.plugin.capture-output/capture-output? true
+ :kaocha/reporter [kaocha.report/dots]
+ :cloverage/opts {:output "target/coverage"
+                  :html? true
+                  :summary? true
+                  ;; the inline RCF blocks are tests, not code to cover
+                  :exclude-call [hyperfiddle.rcf/tests]}}

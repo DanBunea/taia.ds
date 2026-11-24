@@ -26,15 +26,42 @@ way the browser does, and `testid-text` / `extract-post-urls` parse the rendered
 [hickory](https://github.com/clj-commons/hickory) so assertions target `data-testid` attributes, not
 strings. Copy the file; it is forty lines.
 
+Start each case from the store it is about, rather than chaining one case's result into the
+next; keep `step` for the cases where the round trip itself is the point:
+
 ```clojure
-(def c0 (run "basics.counter" "counter1" {} "init"))
-(def c1 (step "basics.counter" "counter1" c0 "increment"))
-(:count (:memory c1)) := 1
-(testid-text (:html c1) "count") := "1"
+(def ^:private at-one {:memory {:count 1} :state :displayed})
+
+"an increment from 1"
+(-> (run "basics.counter" "counter1" at-one "increment")
+    (select-keys [:memory :state]))
+:= {:memory {:count 2} :state :displayed}
+
+"the render shows the new count"
+(-> (run "basics.counter" "counter1" at-one "increment")
+    :html
+    (testid-text "count"))
+:= "2"
 ```
 
 [`examples_test.clj`](../bases/examples/test/taia/ds/examples/examples_test.clj) is the complete
 executable spec of the examples and the best place to see the style.
+
+## How the tests are written
+
+The same rules hold for the library's own tests (inline RCF `(tests …)` blocks):
+
+- **One function per test.** A function that hands work to another one is tested with that
+  collaborator mocked by `spy.core`, asserting both its return value and
+  `(spy/called-once-with? collaborator args…) := true`; the collaborator has tests of its own.
+  The flow procs are the reference: `process-event.controller` tests `handle-event` directly, and
+  `step` with `handle-event` spied.
+- **Standalone cases.** Each case starts from a named value of its own (`at-one`,
+  `holding-running`), never from the result of the case before it.
+- **Threads one step per line, from the input:**
+  `(-> holding-running` / `(handle-event {:event ["increment" {}]})` / `sent` / `:ctx)`.
+- **Whole values.** Compare the full expected map or vector with `:=`; narrow with `select-keys`
+  or a named helper only when the case is about one part.
 
 ## Driving a connected component's flow
 

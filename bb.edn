@@ -4,6 +4,21 @@
                 :task (clojure "-M:dev -m dev")}
   test         {:doc "Run the unit tests (Kaocha + RCF inline tests, examples included)"
                 :task (clojure "-M:dev:test")}
+  coverage     {:doc "Unit tests under Cloverage; HTML report in target/coverage/index.html. bb coverage | bb coverage my.ns.prefix (report only those nss) | or Kaocha flags, e.g. --focus / --cov-ns-regex"
+                :task (let [raw *command-line-args*
+                            args (if (= "--" (first raw)) (rest raw) raw)
+                            kaocha-args (cond
+                                          (empty? args) []
+                                          (and (= 1 (count args))
+                                               (not (clojure.string/starts-with? (first args) "-")))
+                                          ;; every test runs (a ns is covered by tests anywhere); only
+                                          ;; the report narrows, to that ns or ns prefix
+                                          ["--cov-ns-regex" (str "^" (.replace ^String (first args) "." "\\.") ".*")]
+                                          :else args)]
+                        (println (str "Running task: coverage"
+                                      (when (seq kaocha-args)
+                                        (str " — " (clojure.string/join " " kaocha-args)))))
+                        (apply clojure (concat ["-M:dev:coverage"] kaocha-args)))}
   check        {:doc "Validate the Polylith workspace"
                 :task (clojure "-M:poly check")}
   info         {:doc "Show the Polylith workspace"

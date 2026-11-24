@@ -2,7 +2,9 @@
   (:require
    [taia.ds.datastar.adapters.handlers.default-component-handler :as ce]
    [taia.ds.datastar.adapters.handlers.connected-component-handler :as cce]
-   #?(:clj [taia.ds.datastar.adapters.flow :as flow])
+   #?(:clj [taia.ds.datastar.adapters.handlers.request :as request])
+   #?(:clj [taia.ds.datastar.use-cases.process-event :as process-event])
+   #?(:clj [taia.ds.datastar.use-cases.process-event.common :as common])
    #?(:clj [taia.ds.datastar.adapters.handlers.discovery :as discovery])
    #?(:clj [taia.ds.datastar.adapters.handlers.observer :as observer])
    #?(:clj [taia.ds.datastar.adapters.handlers.response :as response])
@@ -66,7 +68,7 @@
       Lets a caller serve a component's full-page render at a canonical URL
       (e.g. GET /es → site.landing INIT) instead of redirecting into /ds/…"
      [req component-name component-id event-name controller-name]
-     (flow/process-component-event req component-name component-id event-name controller-name)))
+     (ce/process-component-event req component-name component-id event-name controller-name)))
 
 #?(:clj
    (defn send-ui!
@@ -84,7 +86,9 @@
       test a connected component in process.
       opts: {:component-name :component-id :controller-name :keep-ctx?}"
      [opts]
-     (flow/start-component-flow! opts)))
+     (let [{:keys [component-name controller-name]} opts]
+       (process-event/start-flow!
+        (merge opts (discovery/resolve-component component-name controller-name))))))
 
 #?(:clj
    (defn run-flow-event!
@@ -92,13 +96,17 @@
       its result map (:ctx, :html, …). `req` carries the client signals and
       params like a request would; nil makes it a server event."
      [component-flow req event-name]
-     (flow/run-event! component-flow req event-name)))
+     (process-event/run-event!
+      component-flow
+      (if req
+        (request/->event-msg req (:component-id component-flow) event-name)
+        (common/server-event event-name {})))))
 
 #?(:clj
    (defn stop-component-flow!
      "Stops a flow from `start-component-flow!`."
      [component-flow]
-     (flow/stop-component-flow! component-flow)))
+     (process-event/stop-flow! component-flow)))
 
 #?(:clj
    (defn connections

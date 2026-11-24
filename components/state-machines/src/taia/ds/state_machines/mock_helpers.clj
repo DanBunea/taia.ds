@@ -1,7 +1,8 @@
 (ns taia.ds.state-machines.mock-helpers
   (:require
    [clojure.walk :as walk]
-   [hyperfiddle.rcf :refer [tests]]))
+   [hyperfiddle.rcf :refer [tests]]
+   [spy.core :as spy]))
 
 (defn- fn->var
   "Given a fn value, searches all loaded namespaces for its var.
@@ -33,18 +34,35 @@
 (defn- make-closure-action []
   (fn [ctx _] ctx))
 
+;;; fn->var
+
 (tests
- "named defn is replaced with its var"
- (let [machine {:states {:a {:on {:E {:actions named-action}}}}}
-       result  (make-machine-testable machine)]
-   (get-in result [:states :a :on :E :actions])) := #'named-action
+ "a fn some var holds: that var"
+ (fn->var named-action) := #'named-action
 
- "closure from higher-order fn is left as-is (no var)"
- (let [closure (make-closure-action)
-       machine {:states {:a {:on {:E {:actions closure}}}}}
-       result  (make-machine-testable machine)]
-   (fn? (get-in result [:states :a :on :E :actions]))) := true
+ "a closure (no var holds it): nil"
+ (fn->var (make-closure-action)) := nil)
 
- "non-fn values in the machine are preserved unchanged"
- (let [machine {:id :my-machine :initial :a :states {:a {:on {:E :b}} :b {}}}]
-   (make-machine-testable machine)) := {:id :my-machine :initial :a :states {:a {:on {:E :b}} :b {}}})
+;;; make-machine-testable. Finding a fn's var is fn->var's (tested above), so
+;;; here it is a spy.
+
+(tests
+ "a fn in the machine is replaced by the var fn->var finds for it"
+ (with-redefs [fn->var (spy/stub #'named-action)]
+   (make-machine-testable {:states {:a {:on {:E {:actions named-action}}}}})
+   := {:states {:a {:on {:E {:actions #'named-action}}}}}
+   (spy/called-once-with? fn->var named-action) := true)
+
+ "a fn fn->var finds no var for (a closure from a higher-order fn) is left as it is"
+ ;; a def because identity matters: each make-closure-action call is a new fn
+ (def ^:private closure-action (make-closure-action))
+ (with-redefs [fn->var (spy/stub nil)]
+   (make-machine-testable {:states {:a {:on {:E {:actions closure-action}}}}})
+   := {:states {:a {:on {:E {:actions closure-action}}}}}
+   (spy/called-once-with? fn->var closure-action) := true)
+
+ "a machine with no fns: unchanged, fn->var never asked"
+ (with-redefs [fn->var (spy/stub nil)]
+   (make-machine-testable {:id :my-machine :initial :a :states {:a {:on {:E :b}} :b {}}})
+   := {:id :my-machine :initial :a :states {:a {:on {:E :b}} :b {}}}
+   (spy/not-called? fn->var) := true))

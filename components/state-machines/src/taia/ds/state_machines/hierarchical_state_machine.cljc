@@ -176,631 +176,606 @@
       ;; Return normal transition result
        result-with-context))))
 
+;;; Tests — state-key-from-opts
+
 (tests
- "transition should transition from a state to another, with no context"
- (def machine {:on {:GE1 :B
-                    :GE2 {:target :C}
-                    :GE3 {}}
-               :states {:A {:on {:E1 :B}}
-                        :B {:on {:E2 {:target :C}
-                                 :E3 {}}}
-                        :C {:states {:C1 {:on {:EC1 :C2}}
-                                     :C2 {:on {:EC2 [:B]
-                                               :EC3 {}
-                                               :EC4 {:target :C3}
-                                               :EC5 {:target [:C :C1]}
-                                               :EC6 [{:target :C3 :cond (fn [_ _] false)}
-                                                     {:target [:B] :cond (fn [_ _] true)}]
-                                               :EC7 [{:target :C3 :cond (fn [_ _] true)}
-                                                     {:target [:B] :cond (fn [_ _] false)}]
-                                               :EC8 [{:target :C3 :cond (fn [_ _] false)}
-                                                     {:target [:B]}]}}
-                                     :C3 {}}}}})
- (transition
-  machine
-  {:_state :A}
-  [:E1 {}]) := {:_state :B}
+ "the :state-key given"
+ (state-key-from-opts {:state-key :aa}) := :aa
 
- (transition
-  machine
-  {:aa :A}
-  [:E1 {}]
-  {:state-key :aa}) := {:aa :B}
+ "none given: :_state"
+ (state-key-from-opts {}) := :_state)
 
- (transition
-  machine
-  {:_state :B}
-  [:E2 {}]) := {:_state :C}
+;;; Tests — transition. Real machines in, ctx out: the machine semantics are
+;;; transition's own behaviour, so nothing in it is spied but the user's fns
+;;; (conditions, trace fns) and `warn`.
 
- (transition
-  machine
-  {:_state :B}
-  [:E3 {}]) := {:_state :B}
+(tests
+ "transition from a state to another — every kind of target, flat and nested"
+ (def ^:private machine
+   {:on {:GE1 :B
+         :GE2 {:target :C}
+         :GE3 {}}
+    :states {:A {:on {:E1 :B}}
+             :B {:on {:E2 {:target :C}
+                      :E3 {}}}
+             :C {:states {:C1 {:on {:EC1 :C2}}
+                          :C2 {:on {:EC2 [:B]
+                                    :EC3 {}
+                                    :EC4 {:target :C3}
+                                    :EC5 {:target [:C :C1]}
+                                    :EC6 [{:target :C3 :cond (fn [_ _] false)}
+                                          {:target [:B] :cond (fn [_ _] true)}]
+                                    :EC7 [{:target :C3 :cond (fn [_ _] true)}
+                                          {:target [:B] :cond (fn [_ _] false)}]
+                                    :EC8 [{:target :C3 :cond (fn [_ _] false)}
+                                          {:target [:B]}]}}
+                          :C3 {}}}}})
 
- (transition
-  machine
-  {:_state :A}
-  [:GE1 {}]) := {:_state :B}
-
- (transition
-  machine
-  {:_state :B}
-  [:GE2 {}]) := {:_state :C}
-
- (transition
-  machine
-  {:_state :B}
-  [:GE3 {}]) := {:_state :B}
-
- (transition
-  machine
-  {:_state [:C :C1]}
-  [:EC1 {}]) := {:_state [:C :C2]}
-
- (transition
-  machine
-  {:_state [:C :C2]}
-  [:EC2 {}]) := {:_state :B}
-
- (transition
-  machine
-  {:_state [:C :C2]}
-  [:EC3 {}]) := {:_state [:C :C2]}
-
- (transition
-  machine
-  {:_state [:C :C2]}
-  [:EC4 {}]) := {:_state [:C :C3]}
-
- (transition
-  machine
-  {:_state [:C :C2]}
-  [:EC5 {}])
- := {:_state [:C :C1]}
-
- (transition
-  machine
-  {:_state [:C :C2]}
-  [:EC6 {}])
+ "no context — a state's event with a bare keyword target"
+ (transition machine {:_state :A} [:E1 {}])
  := {:_state :B}
 
- (transition
-  machine
-  {:_state [:C :C2]}
-  [:EC7 {}])
+ "no context — the state lives under the :state-key given"
+ (transition machine {:aa :A} [:E1 {}] {:state-key :aa})
+ := {:aa :B}
+
+ "no context — a {:target} map"
+ (transition machine {:_state :B} [:E2 {}])
+ := {:_state :C}
+
+ "no context — an empty map: stays"
+ (transition machine {:_state :B} [:E3 {}])
+ := {:_state :B}
+
+ "no context — a machine-level (global) event, bare keyword"
+ (transition machine {:_state :A} [:GE1 {}])
+ := {:_state :B}
+
+ "no context — a global event, {:target} map"
+ (transition machine {:_state :B} [:GE2 {}])
+ := {:_state :C}
+
+ "no context — a global event, empty map: stays"
+ (transition machine {:_state :B} [:GE3 {}])
+ := {:_state :B}
+
+ "no context — a nested state, a bare keyword target: a sibling"
+ (transition machine {:_state [:C :C1]} [:EC1 {}])
+ := {:_state [:C :C2]}
+
+ "no context — a nested state, a vector target: an absolute path"
+ (transition machine {:_state [:C :C2]} [:EC2 {}])
+ := {:_state :B}
+
+ "no context — a nested state, an empty map: stays"
+ (transition machine {:_state [:C :C2]} [:EC3 {}])
+ := {:_state [:C :C2]}
+
+ "no context — a nested state, a {:target} keyword: a sibling"
+ (transition machine {:_state [:C :C2]} [:EC4 {}])
  := {:_state [:C :C3]}
 
- (transition
-  machine
-  {:_state [:C :C2]}
-  [:EC8 {}])
+ "no context — a nested state, a {:target} vector: an absolute path"
+ (transition machine {:_state [:C :C2]} [:EC5 {}])
+ := {:_state [:C :C1]}
+
+ "no context — options: the second, whose :cond holds"
+ (transition machine {:_state [:C :C2]} [:EC6 {}])
  := {:_state :B}
 
- (transition
-  machine
-  {:x [:C :C2]}
-  [:EC8 {}]
-  {:state-key :x})
- := {:x :B})
+ "no context — options: the first, whose :cond holds"
+ (transition machine {:_state [:C :C2]} [:EC7 {}])
+ := {:_state [:C :C3]}
 
-(tests
- "transition should transition from a state to another, preserving the context sent"
- (def machine {:on {:GE1 :B
-                    :GE2 {:target :C}
-                    :GE3 {}}
-               :states {:A {:on {:E1 :B}}
-                        :B {:on {:E2 {:target :C}
-                                 :E3 {}}}
-                        :C {:states {:C1 {:on {:EC1 :C2}}
-                                     :C2 {:on {:EC2 [:B]
-                                               :EC3 {}
-                                               :EC4 {:target :C3}
-                                               :EC5 {:target [:C :C1]}
-                                               :EC6 [{:target :C3 :cond (fn [_ _] false)}
-                                                     {:target [:B] :cond (fn [_ _] true)}]
-                                               :EC7 [{:target :C3 :cond (fn [_ _] true)}
-                                                     {:target [:B] :cond (fn [_ _] false)}]}}
-                                     :C3 {}}}}})
- (transition
-  machine
-  {:_state :A :something "here"}
-  [:E1 {}])
- := {:_state :B  :something "here"}
+ "no context — options: one with no :cond always holds"
+ (transition machine {:_state [:C :C2]} [:EC8 {}])
+ := {:_state :B}
 
- (transition
-  machine
-  {:_state :B  :something "here"}
-  [:E2 {}])
- := {:_state :C  :something "here"}
+ "no context — options, under the :state-key given"
+ (transition machine {:x [:C :C2]} [:EC8 {}] {:state-key :x})
+ := {:x :B}
 
- (transition
-  machine
-  {:_state :B  :something "here"}
-  [:E3 {}])
- := {:_state :B  :something "here"}
-
- (transition
-  machine
-  {:_state :A  :something "here"}
-  [:GE1 {}])
- := {:_state :B  :something "here"}
-
- (transition
-  machine
-  {:_state :B  :something "here"}
-  [:GE2 {}])
- := {:_state :C  :something "here"}
-
- (transition
-  machine
-  {:_state :B  :something "here"}
-  [:GE3 {}])
- := {:_state :B  :something "here"}
-
- (transition
-  machine
-  {:_state [:C :C1]  :something "here"}
-  [:EC1 {}])
- := {:_state [:C :C2]  :something "here"}
-
- (transition
-  machine
-  {:_state [:C :C2] :something "here"}
-  [:EC2 {}])
+ "with context — the context sent is kept through every kind of transition"
+ (transition machine {:_state :A :something "here"} [:E1 {}])
  := {:_state :B :something "here"}
 
- (transition
-  machine
-  {:_state [:C :C2]  :something "here"}
-  [:EC3 {}])
- := {:_state [:C :C2]  :something "here"}
+ (transition machine {:_state :B :something "here"} [:E2 {}])
+ := {:_state :C :something "here"}
 
- (transition
-  machine
-  {:_state [:C :C2]  :something "here"}
-  [:EC4 {}])
- := {:_state [:C :C3]  :something "here"}
+ (transition machine {:_state :B :something "here"} [:E3 {}])
+ := {:_state :B :something "here"}
 
- (transition
-  machine
-  {:_state [:C :C2] :something "here"}
-  [:EC5 {}])
+ (transition machine {:_state :A :something "here"} [:GE1 {}])
+ := {:_state :B :something "here"}
+
+ (transition machine {:_state :B :something "here"} [:GE2 {}])
+ := {:_state :C :something "here"}
+
+ (transition machine {:_state :B :something "here"} [:GE3 {}])
+ := {:_state :B :something "here"}
+
+ (transition machine {:_state [:C :C1] :something "here"} [:EC1 {}])
+ := {:_state [:C :C2] :something "here"}
+
+ (transition machine {:_state [:C :C2] :something "here"} [:EC2 {}])
+ := {:_state :B :something "here"}
+
+ (transition machine {:_state [:C :C2] :something "here"} [:EC3 {}])
+ := {:_state [:C :C2] :something "here"}
+
+ (transition machine {:_state [:C :C2] :something "here"} [:EC4 {}])
+ := {:_state [:C :C3] :something "here"}
+
+ (transition machine {:_state [:C :C2] :something "here"} [:EC5 {}])
  := {:_state [:C :C1] :something "here"}
 
- (transition
-  machine
-  {:_state [:C :C2] :something "here"}
-  [:EC6 {}])
+ (transition machine {:_state [:C :C2] :something "here"} [:EC6 {}])
  := {:_state :B :something "here"}
 
- (transition
-  machine
-  {:_state [:C :C2] :something "here"}
-  [:EC7 {}])
+ (transition machine {:_state [:C :C2] :something "here"} [:EC7 {}])
  := {:_state [:C :C3] :something "here"})
 
-(tests "transition should transition from a state to another running the action"
-       (def machine {:on {:GE1 {:actions (fn [ctx _] (assoc ctx :count 3))  :target :C}}
-                     :states {:A {:on {:E1 {:actions (fn [ctx _] (assoc ctx :count 2)) :target :B}}}
-                              :B {:on {}}
-                              :C {:states {:C1 {:on {:EC2 {:actions (fn [ctx _] (assoc ctx :count 1)) :target :C2}
-                                                     :EC3 [{:actions (fn [ctx _] (assoc ctx :count 77)) :target :C2 :cond (fn [_ _] false)}
-                                                           {:actions (fn [ctx _] (assoc ctx :count 4)) :target [:B] :cond (fn [_ _] true)}]
-                                                     :EC4 [{:actions (fn [ctx _] (assoc ctx :count 5)) :target :C2 :cond (fn [_ _] true)}
-                                                           {:actions (fn [ctx _] (assoc ctx :count 99)) :target [:B] :cond (fn [_ _] false)}]}}
-                                           :C2 {}}}}})
-       (transition
-        machine
-        {:_state :A}
-        [:E1 {}])
-       {:_state :B :count 2}
+(tests
+ "transition from a state to another running the action"
+ (def ^:private machine
+   {:on {:GE1 {:actions (fn [ctx _] (assoc ctx :count 3)) :target :C}}
+    :states {:A {:on {:E1 {:actions (fn [ctx _] (assoc ctx :count 2)) :target :B}}}
+             :B {:on {}}
+             :C {:states {:C1 {:on {:EC2 {:actions (fn [ctx _] (assoc ctx :count 1)) :target :C2}
+                                    :EC3 [{:actions (fn [ctx _] (assoc ctx :count 77)) :target :C2 :cond (fn [_ _] false)}
+                                          {:actions (fn [ctx _] (assoc ctx :count 4)) :target [:B] :cond (fn [_ _] true)}]
+                                    :EC4 [{:actions (fn [ctx _] (assoc ctx :count 5)) :target :C2 :cond (fn [_ _] true)}
+                                          {:actions (fn [ctx _] (assoc ctx :count 99)) :target [:B] :cond (fn [_ _] false)}]}}
+                          :C2 {}}}}})
 
-       (transition
-        machine
-        {:_state :B}
-        [:GE1 {}])
-       := {:_state :C :count 3}
-       (transition
-        machine
-        {:_state [:C :C1]}
-        [:EC2 {}])
-       := {:_state [:C :C2] :count 1}
+ "actions — a state's event runs its action"
+ (transition machine {:_state :A} [:E1 {}])
+ := {:_state :B :count 2}
 
-       (transition
-        machine
-        {:_state [:C :C1]}
-        [:EC3 {}])
-       := {:_state :B :count 4}
+ "actions — a global event runs its action"
+ (transition machine {:_state :B} [:GE1 {}])
+ := {:_state :C :count 3}
 
-       (transition
-        machine
-        {:_state [:C :C1]}
-        [:EC4 {}])
-       := {:_state [:C :C2] :count 5})
+ "actions — a nested state's event runs its action"
+ (transition machine {:_state [:C :C1]} [:EC2 {}])
+ := {:_state [:C :C2] :count 1}
 
-(tests "transition should transition from a state to another running the action adding to the context received through the transition fn"
-       (def machine {:on {:GE1 {:actions (fn [ctx _] (assoc ctx :count 3))  :target :C}}
-                     :states {:A {:on {:E1 {:actions (fn [ctx _] (assoc ctx :count 2)) :target :B}}}
-                              :B {:on {}}
-                              :C {:states {:C1 {:on {:EC2 {:actions (fn [ctx _] (assoc ctx :count 1)) :target :C2}
-                                                     :EC3 [{:actions (fn [ctx _] (assoc ctx :count 77)) :target :C2 :cond (fn [_ _] false)}
-                                                           {:actions (fn [ctx _] (assoc ctx :count 4)) :target [:B] :cond (fn [_ _] true)}]
-                                                     :EC4 [{:actions (fn [ctx _] (assoc ctx :count 5)) :target :C2 :cond (fn [_ _] true)}
-                                                           {:actions (fn [ctx _] (assoc ctx :count 99)) :target [:B] :cond (fn [_ _] false)}]}}
-                                           :C2 {}}}}})
-       (transition
-        machine
-        {:_state :A :initial 1}
-        [:E1 {}])
-       := {:_state :B :initial 1 :count 2}
+ "actions — options: only the chosen option's action runs (the second)"
+ (transition machine {:_state [:C :C1]} [:EC3 {}])
+ := {:_state :B :count 4}
 
-       (transition
-        machine
-        {:_state :B :initial 1}
-        [:GE1 {}])
-       := {:_state :C :initial 1 :count 3}
+ "actions — options: only the chosen option's action runs (the first)"
+ (transition machine {:_state [:C :C1]} [:EC4 {}])
+ := {:_state [:C :C2] :count 5}
 
-       (transition
-        machine
-        {:_state [:C :C1] :initial 1}
-        [:EC2 {}])
-       := {:_state [:C :C2] :initial 1 :count 1}
+ "actions with context — the action gets the context sent and adds to it"
+ (transition machine {:_state :A :initial 1} [:E1 {}])
+ := {:_state :B :initial 1 :count 2}
 
-       (transition
-        machine
-        {:_state [:C :C1] :initial 1}
-        [:EC3 {}])
-       := {:_state :B :initial 1 :count 4}
+ (transition machine {:_state :B :initial 1} [:GE1 {}])
+ := {:_state :C :initial 1 :count 3}
 
-       (transition
-        machine
-        {:_state [:C :C1] :initial 1}
-        [:EC4 {}])
-       := {:_state [:C :C2] :initial 1 :count 5})
+ (transition machine {:_state [:C :C1] :initial 1} [:EC2 {}])
+ := {:_state [:C :C2] :initial 1 :count 1}
+
+ (transition machine {:_state [:C :C1] :initial 1} [:EC3 {}])
+ := {:_state :B :initial 1 :count 4}
+
+ (transition machine {:_state [:C :C1] :initial 1} [:EC4 {}])
+ := {:_state [:C :C2] :initial 1 :count 5})
 
 (tests
- "transition should pass context and event params to the condition evaluation functions"
- (def condition-fn (spy/spy (fn [_ctx _ev] true)))
-
- (transition
-  {:states {:A {:on {:EC2 [{:target :B
-                            :cond condition-fn}]}}
-            :B {}}}
-  {:_state :A :something "here"}
-  [:EC2 {:event "params"}]) := {:_state :B :something "here"}
-
- (spy/calls condition-fn) := [[{:something "here"} {:event "params"}]])
+ "no :target — an event with only :actions stays in its state, the action applied"
+ (transition {:states {:A {:on {:BUMP {:actions (fn [ctx _] (update ctx :count inc))}}}
+                       :B {}}}
+             {:_state :A :count 1}
+             [:BUMP {}])
+ := {:_state :A :count 2})
 
 (tests
- "transition fails when there is no matching condition, warns but doen't do anything"
+ "a :cond gets the context (without the state key) and the event params"
+ (def ^:private params-cond (spy/spy (fn [_ctx _ev] true)))
+ (transition {:states {:A {:on {:EC2 [{:target :B :cond params-cond}]}}
+                       :B {}}}
+             {:_state :A :something "here"}
+             [:EC2 {:event "params"}])
+ := {:_state :B :something "here"}
+ (spy/called-once-with? params-cond {:something "here"} {:event "params"}) := true)
+
+(tests
+ "no matching condition: it warns, and the state is left as it was"
+ ;; a def because identity matters: the warning prints this very machine, its
+ ;; cond fns (object ids) and all
+ (def ^:private machine
+   {:states {:A {:on {:EC2 [{:target :B :cond (fn [_ _] false)}
+                            {:target :C :cond (fn [_ _] false)}]}}
+             :B {}
+             :C {}}})
  (with-redefs [warn (spy/spy)]
-   (transition
-    {:states {:A {:on {:EC2 [{:target :B
-                              :cond (fn [_ _] false)}
-                             {:target :C
-                              :cond (fn [_ _] false)}]}}
-              :B {}
-              :C {}}}
-    {:_state :A}
-    [:EC2 {}]) := {:_state :A}
-
-   (-> (spy/last-call warn) first (clojure.string/starts-with? "No matching condition for the event :EC2")) := true
-
-   "transition fails when current state invalid , warns but doen't do anything"
-   (transition
-    {:states {:A {}}}
-    {:_state :not-exists}
-    [:EC2 {}])
-   := {:_state :not-exists}
-
-   (-> (spy/last-call warn) first (clojure.string/starts-with? "Event :EC2 not found!.")) := true
-
-   "transition fails when event invalid , warns but doen't do anything"
-
-   (transition
-    {:states {:A {}}}
-    {:_state :A}
-    [:NOT-EXISTING {}]) :=  {:_state :A}
-
-   (-> (spy/last-call warn) first (clojure.string/starts-with? "Event :NOT-EXISTING not found!.")) := true))
+   (transition machine {:_state :A} [:EC2 {}])
+   := {:_state :A}
+   (spy/called-once-with? warn (str "No matching condition for the event :EC2. Event params {}\n. Machine: "
+                                    (prn-str machine)))
+   := true))
 
 (tests
- "transition should handle invoke on state entry"
- (def machine
-   {:states
-    {:a {:on {:START {:target :b}}}
-     :b {:invoke {:src (fn [_ctx]
-                         {:processed true})
-                  :on-done {:target :su
-                            :actions (fn [ctx result]
-                                       (assoc ctx
-                                              :processed (:processed result)
-                                              :done true))}
-                  :on-error {:target :er
-                             :actions (fn [ctx error]
-                                        (assoc ctx :error error))}}}
-     :su {}
-     :er {}}})
+ "a current state the machine does not have: it warns, and the state is left as it was"
+ (with-redefs [warn (spy/spy)]
+   (transition {:states {:A {}}} {:_state :not-exists} [:EC2 {}])
+   := {:_state :not-exists}
+   (spy/called-once-with? warn (str "Event :EC2 not found!. Event params {}\n. "
+                                    "Paths: [:on :EC2]\n or (:states :not-exists :on :EC2)\n don't exist in machine: "))
+   := true)
 
- (transition
-  machine
-  {:_state :a}
-  [:START {}])
+ "an event the state does not have: it warns, and the state is left as it was"
+ (with-redefs [warn (spy/spy)]
+   (transition {:states {:A {}}} {:_state :A} [:NOT-EXISTING {}])
+   := {:_state :A}
+   (spy/called-once-with? warn (str "Event :NOT-EXISTING not found!. Event params {}\n. "
+                                    "Paths: [:on :NOT-EXISTING]\n or (:states :A :on :NOT-EXISTING)\n don't exist in machine: "))
+   := true))
+
+(tests
+ "invoke on state entry: its :src runs, then :on-done's action and target"
+ (transition {:states
+              {:a {:on {:START {:target :b}}}
+               :b {:invoke {:src (fn [_ctx]
+                                   {:processed true})
+                            :on-done {:target :su
+                                      :actions (fn [ctx result]
+                                                 (assoc ctx
+                                                        :processed (:processed result)
+                                                        :done true))}
+                            :on-error {:target :er
+                                       :actions (fn [ctx error]
+                                                  (assoc ctx :error error))}}}
+               :su {}
+               :er {}}}
+             {:_state :a}
+             [:START {}])
  := {:_state :su
      :processed true
      :done true}
 
- "transition should handle invoke on state entry"
- (def double-invoke-machine
-   {:states
-    {:a {:on {:START {:target :b}}}
-     :b {:invoke {:src (fn [_ctx]
-                         {:processed-a true})
-                  :on-done {:target :c
-                            :actions (fn [ctx result]
-                                       (assoc ctx
-                                              :processed-a (:processed-a result)
-                                              :done true))}}}
-     :c {:invoke {:src (fn [_ctx]
-                         {:processed-b true})
-                  :on-done {:target :su
-                            :actions (fn [ctx result]
-                                       (assoc ctx
-                                              :processed-b (:processed-b result)
-                                              :done true))}}}
-     :su {}
-     :er {}}})
+ "invoke on state entry: the context is preserved through it"
+ (transition {:states
+              {:a {:on {:START {:target :b}}}
+               :b {:invoke {:src (fn [_ctx]
+                                   {:processed true})
+                            :on-done {:target :su
+                                      :actions (fn [ctx result]
+                                                 (assoc ctx
+                                                        :processed (:processed result)
+                                                        :done true))}
+                            :on-error {:target :er
+                                       :actions (fn [ctx error]
+                                                  (assoc ctx :error error))}}}
+               :su {}
+               :er {}}}
+             {:_state :a :initial "value"}
+             [:START {}])
+ := {:_state :su
+     :initial "value"
+     :processed true
+     :done true}
 
- (transition
-  double-invoke-machine
-  {:_state :a}
-  [:START {}])
+ "chained invokes: :on-done enters a state with its own invoke, which runs too"
+ (transition {:states
+              {:a {:on {:START {:target :b}}}
+               :b {:invoke {:src (fn [_ctx]
+                                   {:processed-a true})
+                            :on-done {:target :c
+                                      :actions (fn [ctx result]
+                                                 (assoc ctx
+                                                        :processed-a (:processed-a result)
+                                                        :done true))}}}
+               :c {:invoke {:src (fn [_ctx]
+                                   {:processed-b true})
+                            :on-done {:target :su
+                                      :actions (fn [ctx result]
+                                                 (assoc ctx
+                                                        :processed-b (:processed-b result)
+                                                        :done true))}}}
+               :su {}
+               :er {}}}
+             {:_state :a}
+             [:START {}])
  := {:_state :su
      :processed-a true
      :processed-b true
      :done true}
 
- "transition should handle invoke errors"
- (def error-machine
-   {:states
-    {:a {:on {:START {:target :b}}}
-     :b {:invoke {:src (fn [_]
-                         (throw (ex-info "Failed" {:reason :test})))
-                  :on-error {:target :e
-                             :actions (fn [ctx error]
-                                        (assoc ctx :error error))}}}
-     :e {}}})
-
- (transition
-  error-machine
-  {:_state :a}
-  [:START {}])
+ "an invoke whose :src throws an ex-info: :on-error's action gets its ex-data"
+ (transition {:states
+              {:a {:on {:START {:target :b}}}
+               :b {:invoke {:src (fn [_]
+                                   (throw (ex-info "Failed" {:reason :test})))
+                            :on-error {:target :e
+                                       :actions (fn [ctx error]
+                                                  (assoc ctx :error error))}}}
+               :e {}}}
+             {:_state :a}
+             [:START {}])
  := {:_state :e
-     :error {:reason :test}}
-
- "transition should preserve context through invoke"
- (transition
-  machine
-  {:_state :a :initial "value"}
-  [:START {}])
- := {:_state :su
-     :initial "value"
-     :processed true
-     :done true})
+     :error {:reason :test}})
 
 (tests
- "transition should handle minimal invoke configurations"
-
- (def no-handlers-machine
-   {:states
-    {:a {:on {:START {:target :b}}}
-     :b {:invoke {:src (fn [_ctx]
-                         {:processed true})}}
-     :su {}
-     :er {}}})
-
- "Should stay in same state if no handlers defined"
- (transition
-  no-handlers-machine
-  {:_state :a}
-  [:START {}])
+ "minimal invoke — no handlers: it stays in the invoking state"
+ (transition {:states
+              {:a {:on {:START {:target :b}}}
+               :b {:invoke {:src (fn [_ctx]
+                                   {:processed true})}}
+               :su {}
+               :er {}}}
+             {:_state :a}
+             [:START {}])
  := {:_state :b}
 
- (def no-error-handler-machine
-   {:states
-    {:a {:on {:START {:target :b}}}
-     :b {:invoke {:src (fn [_ctx]
-                         {:processed true})  ; This result gets merged into context
-                  :on-done :su}}           ; Then we transition to :su
-     :su {}
-     :er {}}})
- "Should handle success with just on-done target"
- (transition
-  no-error-handler-machine
-  {:_state :a}
-  [:START {}])
+ "minimal invoke — :on-done as a bare target: it goes there, the result not merged"
+ (transition {:states
+              {:a {:on {:START {:target :b}}}
+               :b {:invoke {:src (fn [_ctx]
+                                   {:processed true})
+                            :on-done :su}}
+               :su {}
+               :er {}}}
+             {:_state :a}
+             [:START {}])
  := {:_state :su}
 
- (def error-no-handler-machine
-   {:states
-    {:a {:on {:START {:target :b}}}
-     :b {:invoke {:src (fn [_ctx]
-                         (throw (ex-info "Failed" {:reason :test})))}}
-     :su {}
-     :er {}}})
- "Should stay in same state on error with no handler"
- (transition
-  error-no-handler-machine
-  {:_state :a}
-  [:START {}])
+ "minimal invoke — an error with no :on-error: it stays in the invoking state"
+ (transition {:states
+              {:a {:on {:START {:target :b}}}
+               :b {:invoke {:src (fn [_ctx]
+                                   (throw (ex-info "Failed" {:reason :test})))}}
+               :su {}
+               :er {}}}
+             {:_state :a}
+             [:START {}])
  := {:_state :b})
 
 (tests
- "transition should handle invoke with on-done targeting hierarchical state (sub-machine entry)"
-
- "Invoke with on-done as bare vector (bare vector form)"
- (def invoke-to-sub-machine
-   {:states
-    {:a {:on {:START {:target :b}}}
-     :b {:invoke {:src (fn [_ctx] {:processed true})
-                  :on-done [:region :sub-state]}}
-     :region {:states {:sub-state {}}}}})
-
- (transition
-  invoke-to-sub-machine
-  {:_state :a}
-  [:START {}])
+ "invoke into a sub-machine — :on-done as a bare vector: a hierarchical state"
+ (transition {:states
+              {:a {:on {:START {:target :b}}}
+               :b {:invoke {:src (fn [_ctx] {:processed true})
+                            :on-done [:region :sub-state]}}
+               :region {:states {:sub-state {}}}}}
+             {:_state :a}
+             [:START {}])
  := {:_state [:region :sub-state]}
 
- "Invoke with on-done targeting sub-state that has its own invoke (chained invoke)"
- (def invoke-to-sub-with-invoke
-   {:states
-    {:a {:on {:START {:target :b}}}
-     :b {:invoke {:src (fn [_ctx] {:root true})
-                  :on-done [:region :init]}}
-     :region {:states
-              {:init {:invoke {:src (fn [_ctx] {:sub true})
-                               :on-done {:target :displayed
-                                         :actions (fn [ctx result]
-                                                    (assoc ctx :sub-result (:sub result)))}}}
-               :displayed {}}}}})
-
- (transition
-  invoke-to-sub-with-invoke
-  {:_state :a}
-  [:START {}])
+ "invoke into a sub-machine — the sub-state's own invoke runs too (chained)"
+ (transition {:states
+              {:a {:on {:START {:target :b}}}
+               :b {:invoke {:src (fn [_ctx] {:root true})
+                            :on-done [:region :init]}}
+               :region {:states
+                        {:init {:invoke {:src (fn [_ctx] {:sub true})
+                                         :on-done {:target :displayed
+                                                   :actions (fn [ctx result]
+                                                              (assoc ctx :sub-result (:sub result)))}}}
+                         :displayed {}}}}}
+             {:_state :a}
+             [:START {}])
  := {:_state [:region :displayed]
      :sub-result true}
 
- "on-error with vector target"
- (def invoke-error-to-sub-machine
-   {:states
-    {:a {:on {:START {:target :b}}}
-     :b {:invoke {:src (fn [_] (throw (ex-info "Failed" {:reason :test})))
-                  :on-error [:region :error]}}
-     :region {:states {:error {}}}}})
-
- (transition
-  invoke-error-to-sub-machine
-  {:_state :a}
-  [:START {}])
+ "invoke into a sub-machine — :on-error as a bare vector"
+ (transition {:states
+              {:a {:on {:START {:target :b}}}
+               :b {:invoke {:src (fn [_] (throw (ex-info "Failed" {:reason :test})))
+                            :on-error [:region :error]}}
+               :region {:states {:error {}}}}}
+             {:_state :a}
+             [:START {}])
  := {:_state [:region :error]})
 
 (tests
- "conditional on-done: first matching condition wins"
- (def cond-machine
-   {:states
-    {:a {:on {:START {:target :b}}}
-     :b {:invoke {:src (fn [_] {:route :fast})
-                  :on-done [{:target :fast-path
-                             :cond (fn [_ctx result] (= (:route result) :fast))}
-                            {:target :slow-path}]}}
-     :fast-path {}
-     :slow-path {}}})
-
- (transition cond-machine {:_state :a} [:START {}])
+ "conditional on-done: the first matching condition wins"
+ (transition {:states
+              {:a {:on {:START {:target :b}}}
+               :b {:invoke {:src (fn [_] {:route :fast})
+                            :on-done [{:target :fast-path
+                                       :cond (fn [_ctx result] (= (:route result) :fast))}
+                                      {:target :slow-path}]}}
+               :fast-path {}
+               :slow-path {}}}
+             {:_state :a}
+             [:START {}])
  := {:_state :fast-path}
 
- "conditional on-done: falls through to unconditional branch"
- (def cond-fallthrough-machine
-   {:states
-    {:a {:on {:START {:target :b}}}
-     :b {:invoke {:src (fn [_] {:route :other})
-                  :on-done [{:target :fast-path
-                             :cond (fn [_ctx result] (= (:route result) :fast))}
-                            {:target :slow-path}]}}
-     :fast-path {}
-     :slow-path {}}})
-
- (transition cond-fallthrough-machine {:_state :a} [:START {}])
+ "conditional on-done: it falls through to the unconditional branch"
+ (transition {:states
+              {:a {:on {:START {:target :b}}}
+               :b {:invoke {:src (fn [_] {:route :other})
+                            :on-done [{:target :fast-path
+                                       :cond (fn [_ctx result] (= (:route result) :fast))}
+                                      {:target :slow-path}]}}
+               :fast-path {}
+               :slow-path {}}}
+             {:_state :a}
+             [:START {}])
  := {:_state :slow-path}
 
- "conditional on-done: cond receives context (without state key) and invoke result"
- (def inspect-cond (spy/spy (fn [_ctx _result] true)))
- (def cond-inspect-machine
-   {:states
-    {:a {:on {:START {:target :b}}}
-     :b {:invoke {:src (fn [_] {:data 42})
-                  :on-done [{:target :ok :cond inspect-cond}]}}
-     :ok {}}})
-
- (transition cond-inspect-machine {:_state :a :extra "ctx"} [:START {}])
+ "conditional on-done: the cond gets the context (without the state key) and the invoke result"
+ (def ^:private inspect-cond (spy/spy (fn [_ctx _result] true)))
+ (transition {:states
+              {:a {:on {:START {:target :b}}}
+               :b {:invoke {:src (fn [_] {:data 42})
+                            :on-done [{:target :ok :cond inspect-cond}]}}
+               :ok {}}}
+             {:_state :a :extra "ctx"}
+             [:START {}])
  := {:_state :ok :extra "ctx"}
- (spy/calls inspect-cond) := [[{:extra "ctx"} {:data 42}]]
+ (spy/called-once-with? inspect-cond {:extra "ctx"} {:data 42}) := true
 
- "conditional on-done: each branch can have its own action"
- (def cond-actions-machine
-   {:states
-    {:a {:on {:START {:target :b}}}
-     :b {:invoke {:src (fn [_] {:val 1})
-                  :on-done [{:target :branch-a
-                             :cond (fn [_ result] (= (:val result) 1))
-                             :actions (fn [ctx result] (assoc ctx :chosen :a :val (:val result)))}
-                            {:target :branch-b
-                             :actions (fn [ctx result] (assoc ctx :chosen :b))}]}}
-     :branch-a {}
-     :branch-b {}}})
-
- (transition cond-actions-machine {:_state :a} [:START {}])
+ "conditional on-done: each branch has its own action (the first's runs)"
+ (transition {:states
+              {:a {:on {:START {:target :b}}}
+               :b {:invoke {:src (fn [_] {:val 1})
+                            :on-done [{:target :branch-a
+                                       :cond (fn [_ result] (= (:val result) 1))
+                                       :actions (fn [ctx result] (assoc ctx :chosen :a :val (:val result)))}
+                                      {:target :branch-b
+                                       :actions (fn [ctx _result] (assoc ctx :chosen :b))}]}}
+               :branch-a {}
+               :branch-b {}}}
+             {:_state :a}
+             [:START {}])
  := {:_state :branch-a :chosen :a :val 1}
 
- "conditional on-done: second branch action runs when first cond fails"
- (def cond-actions-machine-b
-   {:states
-    {:a {:on {:START {:target :b}}}
-     :b {:invoke {:src (fn [_] {:val 2})
-                  :on-done [{:target :branch-a
-                             :cond (fn [_ result] (= (:val result) 1))
-                             :actions (fn [ctx result] (assoc ctx :chosen :a))}
-                            {:target :branch-b
-                             :actions (fn [ctx result] (assoc ctx :chosen :b :val (:val result)))}]}}
-     :branch-a {}
-     :branch-b {}}})
-
- (transition cond-actions-machine-b {:_state :a} [:START {}])
+ "conditional on-done: the second branch's action runs when the first cond fails"
+ (transition {:states
+              {:a {:on {:START {:target :b}}}
+               :b {:invoke {:src (fn [_] {:val 2})
+                            :on-done [{:target :branch-a
+                                       :cond (fn [_ result] (= (:val result) 1))
+                                       :actions (fn [ctx _result] (assoc ctx :chosen :a))}
+                                      {:target :branch-b
+                                       :actions (fn [ctx result] (assoc ctx :chosen :b :val (:val result)))}]}}
+               :branch-a {}
+               :branch-b {}}}
+             {:_state :a}
+             [:START {}])
  := {:_state :branch-b :chosen :b :val 2}
 
- "conditional on-done: target can be a hierarchical state path"
- (def cond-hierarchical-machine
-   {:states
-    {:a {:on {:START {:target :b}}}
-     :b {:invoke {:src (fn [_] {:deep true})
-                  :on-done [{:target [:region :sub]
-                             :cond (fn [_ result] (:deep result))}
-                            {:target :flat}]}}
-     :flat {}
-     :region {:states {:sub {}}}}})
-
- (transition cond-hierarchical-machine {:_state :a} [:START {}])
+ "conditional on-done: the target can be a hierarchical state path"
+ (transition {:states
+              {:a {:on {:START {:target :b}}}
+               :b {:invoke {:src (fn [_] {:deep true})
+                            :on-done [{:target [:region :sub]
+                                       :cond (fn [_ result] (:deep result))}
+                                      {:target :flat}]}}
+               :flat {}
+               :region {:states {:sub {}}}}}
+             {:_state :a}
+             [:START {}])
  := {:_state [:region :sub]}
 
- "conditional on-done: target with chained invoke"
- (def cond-chained-machine
-   {:states
-    {:a {:on {:START {:target :b}}}
-     :b {:invoke {:src (fn [_] {:go true})
-                  :on-done [{:target :c
-                             :cond (fn [_ result] (:go result))
-                             :actions (fn [ctx result] (assoc ctx :step1 true))}
-                            {:target :fallback}]}}
-     :c {:invoke {:src (fn [_] {:loaded true})
-                  :on-done {:target :done
-                            :actions (fn [ctx result] (assoc ctx :step2 (:loaded result)))}}}
-     :done {}
-     :fallback {}}})
-
- (transition cond-chained-machine {:_state :a} [:START {}])
+ "conditional on-done: the target's own invoke runs too (chained)"
+ (transition {:states
+              {:a {:on {:START {:target :b}}}
+               :b {:invoke {:src (fn [_] {:go true})
+                            :on-done [{:target :c
+                                       :cond (fn [_ result] (:go result))
+                                       :actions (fn [ctx _result] (assoc ctx :step1 true))}
+                                      {:target :fallback}]}}
+               :c {:invoke {:src (fn [_] {:loaded true})
+                            :on-done {:target :done
+                                      :actions (fn [ctx result] (assoc ctx :step2 (:loaded result)))}}}
+               :done {}
+               :fallback {}}}
+             {:_state :a}
+             [:START {}])
  := {:_state :done :step1 true :step2 true}
 
- "conditional on-done: no matching condition stays in current state"
- (def cond-no-match-machine
-   {:states
-    {:a {:on {:START {:target :b}}}
-     :b {:invoke {:src (fn [_] {:val 99})
-                  :on-done [{:target :x :cond (fn [_ _] false)}
-                            {:target :y :cond (fn [_ _] false)}]}}
-     :x {}
-     :y {}}})
-
- (transition cond-no-match-machine {:_state :a} [:START {}])
+ "conditional on-done: no matching condition stays in the invoking state"
+ (transition {:states
+              {:a {:on {:START {:target :b}}}
+               :b {:invoke {:src (fn [_] {:val 99})
+                            :on-done [{:target :x :cond (fn [_ _] false)}
+                                      {:target :y :cond (fn [_ _] false)}]}}
+               :x {}
+               :y {}}}
+             {:_state :a}
+             [:START {}])
  := {:_state :b})
+
+;;; Tests — transition's trace opts: `:action-trace-fn` runs in place of each
+;;; action, `:trace-fn` in place of each invoke's :src (test-helpers builds on them).
+;;; The action and src fns are defs where a spy's call is asserted with them:
+;;; there identity matters.
+
+(tests
+ ":action-trace-fn: called in place of the action, with the event, the action,
+  the ctx and the event params; what it returns is the new ctx"
+ (def ^:private bump (fn [ctx _] (assoc ctx :count 1)))
+ (def ^:private traced-bump (spy/stub {:count 7}))
+ (transition {:states {:A {:on {:E1 {:actions bump :target :B}}}
+                       :B {}}}
+             {:_state :A :n 1}
+             [:E1 {:p 1}]
+             {:action-trace-fn traced-bump})
+ := {:_state :B :count 7}
+ (spy/called-once-with? traced-bump :E1 bump {:n 1} {:p 1}) := true)
+
+(tests
+ ":trace-fn: called in place of the invoke's :src, with its :id, the src and
+  the ctx (without the state key); what it returns is the invoke's result"
+ (def ^:private load-src (fn [_] {:v 0}))
+ (def ^:private traced-load (spy/stub {:v 1}))
+ (transition {:states {:a {:on {:START {:target :b}}}
+                       :b {:invoke {:id :load
+                                    :src load-src
+                                    :on-done {:target :done :actions (fn [ctx r] (assoc ctx :v (:v r)))}}}
+                       :done {}}}
+             {:_state :a :n 1}
+             [:START {}]
+             {:trace-fn traced-load})
+ := {:_state :done :n 1 :v 1}
+ (spy/called-once-with? traced-load :load load-src {:n 1}) := true
+
+ ":trace-fn: an invoke with no :id is traced as :unknown"
+ (def ^:private traced-anonymous-load (spy/stub {}))
+ (transition {:states {:a {:on {:START {:target :b}}}
+                       :b {:invoke {:src load-src :on-done :done}}
+                       :done {}}}
+             {:_state :a}
+             [:START {}]
+             {:trace-fn traced-anonymous-load})
+ := {:_state :done}
+ (spy/called-once-with? traced-anonymous-load :unknown load-src {}) := true
+
+ ":trace-fn: an ex-info it throws takes the invoke's :on-error, with its ex-data"
+ (transition {:states {:a {:on {:START {:target :b}}}
+                       :b {:invoke {:id :load
+                                    :src (fn [_] {:v 0})
+                                    :on-done {:target :done :actions (fn [ctx r] (assoc ctx :v (:v r)))}
+                                    :on-error {:target :er :actions (fn [ctx e] (assoc ctx :err e))}}}
+                       :done {}
+                       :er {}}}
+             {:_state :a}
+             [:START {}]
+             {:trace-fn (fn [_id _src _ctx] (throw (ex-info "fail" {:reason :test})))})
+ := {:_state :er :err {:reason :test}})
+
+(tests
+ ":action-trace-fn on an invoke's :on-done: called with :on-done, the action,
+  the ctx and the invoke's result"
+ (def ^:private store-v (fn [ctx r] (assoc ctx :v (:v r))))
+ (def ^:private traced-store (spy/spy (fn [_ev action ctx r] (action ctx r))))
+ (transition {:states {:a {:on {:START {:target :b}}}
+                       :b {:invoke {:id :load
+                                    :src (fn [_] {:v 0})
+                                    :on-done {:target :done :actions store-v}}}
+                       :done {}}}
+             {:_state :a}
+             [:START {}]
+             {:action-trace-fn traced-store})
+ := {:_state :done :v 0}
+ (spy/called-once-with? traced-store :on-done store-v {} {:v 0}) := true)
+
+(tests
+ "chained invokes, traced: each invoke, then its :on-done action, in order —
+  each one's ctx carries what the one before added"
+ (def ^:private src-a (fn [_] {:v 1}))
+ (def ^:private src-b (fn [_] {:v 2}))
+ (def ^:private act-a (fn [ctx r] (assoc ctx :a (:v r))))
+ (def ^:private act-b (fn [ctx r] (assoc ctx :b (:v r))))
+ (def ^:private traced-chain-invoke (spy/spy (fn [_id src ctx] (src ctx))))
+ (def ^:private traced-chain-action (spy/spy (fn [_ev action ctx r] (action ctx r))))
+
+ (transition {:states {:a {:on {:START {:target :b}}}
+                       :b {:invoke {:id :inv-a :src src-a :on-done {:target :c :actions act-a}}}
+                       :c {:invoke {:id :inv-b :src src-b :on-done {:target :done :actions act-b}}}
+                       :done {}}}
+             {:_state :a}
+             [:START {}]
+             {:trace-fn        traced-chain-invoke
+              :action-trace-fn traced-chain-action})
+ := {:_state :done :a 1 :b 2}
+ (spy/calls traced-chain-invoke) := [[:inv-a src-a {}]
+                                     [:inv-b src-b {:a 1}]]
+ (spy/calls traced-chain-action) := [[:on-done act-a {} {:v 1}]
+                                     [:on-done act-b {:a 1} {:v 2}]])
