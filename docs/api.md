@@ -16,7 +16,7 @@
 - `process-component-event [req component-name component-id event-name controller-name]` — Runs one event through a per-request component flow in-process
 - `send-ui! [component-id user-id component-responses]` — Puts component-responses onto the UI channel for async delivery to
 - `start-component-flow! [opts]` — Starts a component's flow headless — no SSE stream: the machine and
-- `run-flow-event! [component-flow req event-name]` — Runs one event through a flow from `start-component-flow!` and returns
+- `run-flow-event! [component-flow req event-name] [component-flow req event-name params]` — Runs one event through a flow from `start-component-flow!` and returns
 - `stop-component-flow! [component-flow]` — Stops a flow from `start-component-flow!`.
 - `connections []` — The open SSE streams, as {component-id [user-id …]}: who `send-ui!` and
 - `send-event! [component-id user-id event-name params]` — Sends a server event to the connected component (component-id, user-id):

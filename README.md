@@ -81,7 +81,8 @@ Plain functions and data: no handlers, no channels, no SSE, no registration. tai
 - **Signals.** `:memory` and `:state` round-trip through `data-signals` and come back as the ctx of
   the next event. A key your action removes is deleted in the browser too.
 - **The flow.** Your controller and view run as the two procs of a `core.async.flow`, built per
-  event. For a connected component it lives as long as its SSE stream and holds the ctx.
+  event. For a connected component it lives as long as its SSE stream. Nothing is kept between
+  events: each starts from the tab's signals, or from a server event's params.
 - **Connected components.** Streams per user, heartbeats, reconnects, and `send-event!` /
   `send-ui!` for pushes from the server.
 - **The response.** Hiccup becomes HTML and Datastar morphs it in by id; an effects list goes out

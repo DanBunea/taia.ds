@@ -112,14 +112,12 @@ that reason. Keep it that way if you touch it.
 Jetty 12's GzipHandler excludes `text/event-stream` by default (not a suspect). Proxies may buffer
 SSE; the connect handler sends `X-Accel-Buffering: no`, which nginx and Traefik honour.
 
-## A connected flow's state: what the client echoes is not the authority
+## A server event starts from the machine's initial state
 
-A connected component's flow holds its ctx between events, and a browser event's signals are
-merged into that held `:memory` (client wins). A value the *server* changes (a countdown, a status
-pushed by a job) therefore goes stale in the client's store the moment the server moves on, and
-the next click would write the stale copy back. Keep server-owned values in top-level ctx, not in
-`:memory`. `:state` is never taken from the client while the flow holds a ctx, for the same
-reason. And the held ctx lives only as long as the stream: a reconnect starts again from INIT.
+Nothing is kept between events, so a `send-event!` (no request, no signals) starts from the
+machine's `:initial` state with an empty `:memory`. An event that can arrive in any state is
+handled on the machine's own `:on`, and whatever its action needs travels as the event's params
+(`{:remaining 4}`), not in a ctx left behind by an earlier event: there is none.
 
 ## Every one-shot event builds a flow
 

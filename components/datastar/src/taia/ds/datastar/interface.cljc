@@ -80,11 +80,10 @@
 #?(:clj
    (defn start-component-flow!
      "Starts a component's flow headless — no SSE stream: the machine and
-      render fn are resolved now, and with `:keep-ctx? true` the :controller
-      holds the ctx between events, like a connected component's flow. Drive
-      it with `run-flow-event!`; stop it with `stop-component-flow!`. Useful to
+      render fn are resolved now, like a connected component's flow. Drive it
+      with `run-flow-event!`; stop it with `stop-component-flow!`. Useful to
       test a connected component in process.
-      opts: {:component-name :component-id :controller-name :keep-ctx?}"
+      opts: {:component-name :component-id :controller-name}"
      [opts]
      (let [{:keys [component-name controller-name]} opts]
        (process-event/start-flow!
@@ -94,13 +93,16 @@
    (defn run-flow-event!
      "Runs one event through a flow from `start-component-flow!` and returns
       its result map (:ctx, :html, …). `req` carries the client signals and
-      params like a request would; nil makes it a server event."
-     [component-flow req event-name]
-     (process-event/run-event!
-      component-flow
-      (if req
-        (request/->event-msg req (:component-id component-flow) event-name)
-        (common/server-event event-name {})))))
+      params like a request would; nil makes it a server event, with
+      `params` (what `send-event!` sends) as its params."
+     ([component-flow req event-name]
+      (run-flow-event! component-flow req event-name {}))
+     ([component-flow req event-name params]
+      (process-event/run-event!
+       component-flow
+       (if req
+         (request/->event-msg req (:component-id component-flow) event-name)
+         (common/server-event event-name params))))))
 
 #?(:clj
    (defn stop-component-flow!

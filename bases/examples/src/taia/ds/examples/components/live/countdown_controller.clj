@@ -1,21 +1,17 @@
 (ns taia.ds.examples.components.live.countdown-controller
-  "State machine for example 7. The countdown lives in the connected
-   component's FLOW: its `:controller` proc holds the ctx between events, so
-   `:remaining` is plain top-level ctx — no atom, no signal round-trip.
+  "State machine for example 7, a connected component driven by server events.
 
    START launches a ticker that sends a TICK server event once a second with
-   `ds/send-event!`. Each TICK transitions from the ctx the flow holds, and
-   its render is pushed down the tab's open stream. Nothing here builds a
-   patch by hand.
+   `ds/send-event!`, carrying the value to show: {:remaining 4}, then 3, … 0.
+   Nothing is kept between events — a server event brings no request and no
+   signals, so it starts from the machine's initial state, with its params —
+   which is why TICK is handled at the machine level, from any state, and
+   takes `:remaining` from its params. Its render is pushed down the tab's
+   open stream; nothing here builds a patch by hand.
 
-   Two things worth knowing:
-
-   * `send-event!` is addressed to (component-id, user-id) — one tab's flow.
-     It returns false once that tab's stream has closed, which is how the
-     ticker knows to stop.
-   * `:remaining` is server-owned, so it lives OUTSIDE `:memory`: a click's
-     signals merge into the held `:memory`, and a stale echo of a
-     server-owned value there would overwrite the server's."
+   `send-event!` is addressed to (component-id, user-id) — one tab's flow. It
+   returns false once that tab's stream has closed, which is how the ticker
+   knows to stop."
   (:require
    [taia.ds.datastar.interface :as ds]))
 
@@ -28,34 +24,36 @@
   1000)
 
 (defn start-ticker!
-  "Sends `n` TICK events to the tab's flow, `tick-ms` apart, on a virtual
-   thread; stops early if the tab's stream closes."
-  [component-id user-id n]
+  "Counts down from `from` on a virtual thread: a TICK every `tick-ms`, with
+   {:remaining from-1}, …, {:remaining 0}; stops early if the tab's stream
+   closes."
+  [component-id user-id from]
   (Thread/startVirtualThread
    (fn []
-     (loop [n n]
-       (when (pos? n)
+     (loop [n (dec from)]
+       (when (>= n 0)
          (Thread/sleep (long tick-ms))
-         (when (ds/send-event! component-id user-id "tick" {})
+         (when (ds/send-event! component-id user-id "tick" {:remaining n})
            (recur (dec n))))))))
 
 (defn- start [ctx _]
   (start-ticker! (:component-id ctx) (get-in ctx [:logged-user :user/id]) seconds)
   (assoc ctx :remaining seconds))
 
-(defn- last-tick? [ctx _] (<= (or (:remaining ctx) 0) 1))
+(defn- finished? [_ {:keys [remaining]}] (<= remaining 0))
 
-(defn- tick [ctx _] (update ctx :remaining dec))
+(defn- tick [ctx {:keys [remaining]}] (assoc ctx :remaining remaining))
 
 (def machine
   {:id      :countdown
    :initial :idle
+   ;; from any state: a server event starts from :idle, with only its params
+   :on      {:TICK [{:cond finished? :target :done :actions tick}
+                    {:target :running :actions tick}]}
    :states  {:idle    {:on {:INIT  {:actions (fn [ctx _] (assoc ctx :remaining seconds))}
                             :START {:target :running :actions start}}}
-             :running {:on {:TICK [{:cond last-tick? :target :done
-                                    :actions (fn [ctx _] (assoc ctx :remaining 0))}
-                                   {:actions tick}]}}
-             :done    {:on {:START {:target :running :actions start}}}}})
+             :running {}
+             :done    {}}})
 
 (comment
   ;; REPL, with the app running ((user/start!) or `bb dev`) and the page open:
@@ -67,19 +65,17 @@
   ;; answers false
   (ds/connections) ; => {"countdown1" ["demo-user"] …}
 
-  ;; Every call below is a SERVER event on that user's flow: it transitions
-  ;; from the ctx the flow holds, and the render is pushed down the stream.
-  ;; Each returns true, or false when the user has no open stream.
+  ;; Every call below is a SERVER event on that user's flow: it starts from
+  ;; the machine's initial state with the params given, and the render is
+  ;; pushed down the stream. Each returns true, or false when the user has no
+  ;; open stream.
+
+  ;; show any value, the way the ticker does
+  (ds/send-event! "countdown1" "demo-user" "tick" {:remaining 3})
+  (ds/send-event! "countdown1" "demo-user" "tick" {:remaining 0}) ; → :done
 
   ;; start the countdown without a click (starts the ticker too)
   (ds/send-event! "countdown1" "demo-user" "start" {})
-
-  ;; tick by hand: from :running, each one takes a second off
-  (ds/send-event! "countdown1" "demo-user" "tick" {})
-
-  ;; an event the current state does not handle changes nothing — the same
-  ;; render is pushed again
-  (ds/send-event! "countdown1" "demo-user" "init" {})
 
   ;; a user with no open stream
   (ds/send-event! "countdown1" "nobody" "start" {}) ; => false

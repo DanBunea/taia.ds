@@ -15,10 +15,11 @@
    - a DEFAULT component's event gets a flow of its own (`process-event`):
      put the event, take the render or time out, stop the flow;
    - a CONNECTED component's flow lives as long as its SSE stream
-     (`start-flow!` with `:keep-ctx? true`), and its controller holds the ctx
-     between events, so any later event — a browser POST or a server
-     `send-event!` — transitions from where the last one left off (see
-     `domain.ctx/merge-held-ctx`)."
+     (`start-flow!`), so a later event — a browser POST or a server
+     `send-event!` — goes in through the same in-chan.
+   Either way nothing is kept between events: each starts from the client's
+   signals (a click) or from the machine's initial state (a server event,
+   which brings what it needs as its params)."
   (:require
    [clojure.core.async :as a :refer [chan close! put! alt!! timeout]]
    [clojure.core.async.flow :as a.flow]
@@ -40,9 +41,8 @@
 (defn start-flow!
   "Builds, starts and resumes a component's flow. `component` is the resolved
    component — {:machine-var :component-fn-var} — plus its :component-name and
-   :component-id; `:keep-ctx? true` makes the controller hold the ctx between
-   events. Returns {:flow :in-chan :out-chan :component-name :component-id}."
-  [{:keys [machine-var component-fn-var component-name component-id keep-ctx?]}]
+   :component-id. Returns {:flow :in-chan :out-chan :component-name :component-id}."
+  [{:keys [machine-var component-fn-var component-name component-id]}]
   (let [in-chan  (chan 16)
         out-chan (chan 16)
         g        (a.flow/create-flow
@@ -50,8 +50,7 @@
                                              :args {:machine-var    machine-var
                                                     :component-name component-name
                                                     :component-id   component-id
-                                                    :in-chan        in-chan
-                                                    :keep-ctx?      (boolean keep-ctx?)}}
+                                                    :in-chan        in-chan}}
                                 :view       {:proc view/proc
                                              :args {:component-fn-var component-fn-var
                                                     :out-chan         out-chan}}}
@@ -268,31 +267,33 @@
  := ["boom" {::k 1}])
 
 (tests
- "END TO END, connected (a sequence: holding the ctx between events is the
-  point): INIT with a request, then two server events with no request and no
-  signals — each transitions from where the last one left off"
+ "END TO END, connected (a sequence: one flow, several events through the same
+  in-chan): a click starts from its signals, a server event from the machine's
+  initial state and its params — nothing is carried from one event to the next"
  (def ^:private tick-machine
    {:id :tick :initial :idle
-    :states {:idle    {:on {:INIT  {:actions (fn [ctx _] (assoc ctx :remaining 2))}
-                            :START {:target :running}}}
-             :running {:on {:TICK {:actions (fn [ctx _] (update ctx :remaining dec))}}}}})
+    :on {:TICK {:target  :running
+                :actions (fn [ctx {:keys [remaining]}] (assoc ctx :remaining remaining))}}
+    :states {:idle    {:on {:INIT  {:actions (fn [ctx _] (assoc ctx :remaining 5))}
+                            :START {:target :running :actions (fn [ctx _] (assoc ctx :remaining 5))}}}
+             :running {}}})
  (def ^:private tick-view (fn [ctx] [:p (:state ctx) (:remaining ctx) (:memory ctx)]))
  (def ^:private connected (start-flow! {:machine-var #'tick-machine :component-fn-var #'tick-view
-                                        :component-name :tick :component-id "t1" :keep-ctx? true}))
+                                        :component-name :tick :component-id "t1"}))
 
  (-> connected
      (run-event! {:event ["INIT" {}] :request-ctx {:logged-user {:user/id "u1"}}})
      :html)
- := [:p :idle 2 {}]
+ := [:p :idle 5 {}]
 
  (-> connected
-     (run-event! (common/server-event "start" {}))
+     (run-event! {:event ["START" {}] :signals {:note "hi"} :request-ctx {}})
      :html)
- := [:p :running 2 {}]
+ := [:p :running 5 {:note "hi"}]
 
  (-> connected
-     (run-event! (common/server-event "tick" {}))
+     (run-event! (common/server-event "tick" {:remaining 4}))
      :html)
- := [:p :running 1 {}]
+ := [:p :running 4 {}]
 
  (stop-flow! connected))

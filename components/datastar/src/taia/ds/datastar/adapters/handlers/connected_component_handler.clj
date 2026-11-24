@@ -824,8 +824,7 @@
         cf      (process-event/start-flow!
                  (assoc (discovery/resolve-component component nil)
                         :component-name component
-                        :component-id component-id
-                        :keep-ctx? true))]
+                        :component-id component-id))]
     (log/trace
      ::connection-opened
      [:component component
@@ -853,8 +852,7 @@
                           {:machine-var    ::machine
                            :component-fn-var ::view
                            :component-name :cc
-                           :component-id   "cc1"
-                           :keep-ctx?      true})
+                           :component-id   "cc1"})
    := true
    (spy/called-once-with? register-connection! :cc "cc1" ::sse-1 {:user/id "u1"} ::flow) := true
    (spy/called-once-with? start-drain! "cc1" "u1" ::sse-1 ::flow) := true

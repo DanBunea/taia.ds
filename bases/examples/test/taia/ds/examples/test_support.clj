@@ -35,27 +35,28 @@
   {:memory (:memory ctx) :state (:state ctx) :html html :ctx ctx})
 
 (defn connect
-  "Starts `component`'s flow the way a connected component's stream does —
-   the controller HOLDS the ctx between events — and runs INIT through it.
+  "Starts `component`'s flow the way a connected component's stream does,
+   and runs INIT through it. Nothing is kept between events.
    Returns [flow result]; drive the flow with `flow-event` / `server-event`
    and stop it with `ds/stop-component-flow!`."
   [component cid opts]
   (ds/set-component-search-paths! core/search-paths)
-  (let [cf (ds/start-component-flow! {:component-name component :component-id cid :keep-ctx? true})]
+  (let [cf (ds/start-component-flow! {:component-name component :component-id cid})]
     [cf (result-of (ds/run-flow-event! cf (request cid opts) "init"))]))
 
 (defn flow-event
   "A browser event on a connected flow (what a POST to the nds-connect path
-   does): `opts` are the request's `:memory`/`:state`/`:params`, merged into
-   the held ctx."
+   does): `opts` are the request's `:memory`/`:state`/`:params`, the tab's
+   signals it starts from."
   ([cf cid event] (flow-event cf cid event nil))
   ([cf cid event opts] (result-of (ds/run-flow-event! cf (request cid opts) event))))
 
 (defn server-event
   "A server event on a connected flow (what `ds/send-event!` does): no
-   request, no client signals — it transitions from the held ctx alone."
-  [cf event]
-  (result-of (ds/run-flow-event! cf nil event)))
+   request, no client signals — it starts from the machine's initial state,
+   with `params` as the event's params."
+  ([cf event] (server-event cf event {}))
+  ([cf event params] (result-of (ds/run-flow-event! cf nil event params))))
 
 (defn step
   "Feeds the previous `run` result back in as the next request's store — what

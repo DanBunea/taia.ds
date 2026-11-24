@@ -1,7 +1,6 @@
 (ns taia.ds.datastar.domain.ctx
-  "The component context: how it is built from what the client sent, how it
-   combines with the ctx a connected component's flow holds, and how removed
-   memory keys become client-side signal removals. Pure functions over plain
+  "The component context: how it is built from what the client sent, and how
+   removed memory keys become client-side signal removals. Pure functions over plain
    data: no request, no channels."
   (:require
    [taia.ds.extensions.interface :as ext]
@@ -63,60 +62,6 @@
  (initial-ctx {:app-config {:env :dev} :request-method :post} {} "c5" :c :ready)
  := {:state :ready :memory {} :component-id "c5" :component-route :c :logged-user nil
      :app-config {:env :dev} :request-method :post})
-
-(def ^:private per-request-keys
-  "ctx keys that describe the request, not the component: they always come
-   from the newest request."
-  [:logged-user :app-config :request-method])
-
-(defn merge-held-ctx
-  "The ctx an event transitions from in a flow that holds one.
-
-   - No held ctx (the first event, or a per-request flow) → `initial-ctx`, the
-     ctx built from what the client sent.
-   - Otherwise the held ctx is the base:
-     - `:memory` is the held memory with the client's signals merged over it —
-       client-owned values (form inputs) win;
-     - `:state` is the held state — while the flow lives the server is the
-       authority on the FSM position, and the client's echo can be stale after
-       a server push;
-     - the per-request keys (`:logged-user`, `:app-config`, `:request-method`)
-       come from the new request when there is one; a server-sent event keeps
-       the held ones, minus `:request-method`.
-
-   Server-owned values should therefore live OUTSIDE `:memory` (top-level ctx
-   keys), so a stale signal echo can never overwrite them."
-  [held-ctx initial-ctx request?]
-  (if-not held-ctx
-    initial-ctx
-    (-> (if request?
-          (merge (apply dissoc held-ctx per-request-keys)
-                 (select-keys initial-ctx per-request-keys))
-          (dissoc held-ctx :request-method))
-        (dissoc :from-state)
-        (assoc :memory (merge (:memory held-ctx) (:memory initial-ctx))))))
-
-(tests
- "merge-held-ctx: nothing held → the request's ctx verbatim"
- (merge-held-ctx nil {:state :idle :memory {:a 1}} true) := {:state :idle :memory {:a 1}}
-
- "merge-held-ctx: held state wins over the client's echo; client memory merged
-  over held memory; server-owned top-level keys survive"
- (merge-held-ctx {:state :running :memory {:a 1 :b 2} :remaining 3 :from-state :idle
-                  :logged-user {:user/id "old"}}
-                 {:state :idle :memory {:b 20 :c 30} :logged-user {:user/id "u1"}
-                  :request-method :post}
-                 true)
- := {:state :running :memory {:a 1 :b 20 :c 30} :remaining 3
-     :logged-user {:user/id "u1"} :request-method :post}
-
- "merge-held-ctx: a server event (no request) keeps the held per-request keys
-  but drops :request-method"
- (merge-held-ctx {:state :running :memory {:a 1} :logged-user {:user/id "u1"}
-                  :request-method :get}
-                 {:state :idle :memory {} :logged-user nil}
-                 false)
- := {:state :running :memory {:a 1} :logged-user {:user/id "u1"}})
 
 (defn add-removal-nils
   "Returns new-memory augmented with nil entries for every key (recursively)

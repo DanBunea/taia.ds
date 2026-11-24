@@ -314,7 +314,7 @@
     :code [:inc :machine]
     :title "The controller runs the state machine"
     :text [":INCREMENT → (increment ctx {}) → :memory {:count 2}."
-           "A connected component's controller keeps this ctx for its next event."]}
+           "Nothing is kept: the next event starts again from what the page sends."]}
    {:t [11.6 15.0]
     :packet {:path [[880 330] [880 398]] :move [11.8 12.6] :label "ctx {:memory {:count 2}}" :color CTX-C}
     :glow [:view]
@@ -337,8 +337,8 @@
     :glow [:send :controller]
     :show-send 22.4
     :title "A connected component's flow stays up"
-    :text ["It lives as long as the page's SSE stream: (ds/send-event! cid user \"tick\" {}) puts a server event"
-           "on the same in-chan, and its render goes out the same way, down the open stream."]}])
+    :text ["It lives as long as the page's SSE stream: (ds/send-event! cid user \"tick\" {:remaining 4}) puts a"
+           "server event, with its params, on the same in-chan; its render goes out the same way, down the stream."]}])
 
 (def counter-opening
   {:t [0.0 4.6]

@@ -2,13 +2,14 @@
   "Example 7 — Countdown (a connected component driven by server events).
 
    The page mounts this component with `@get('/ds/nds-connect/…/init')`: the
-   stream opens and so does the component's FLOW, whose controller holds the
-   ctx between events. Start is a `@post` to the SAME nds-connect path — it
-   runs through that flow and is answered with the render. After that the
-   server drives it: a TICK a second, sent with `send-event!`, each one
-   rendered and pushed down the stream.
+   stream opens and so does the component's FLOW. Start is a `@post` to the
+   SAME nds-connect path — it runs through that flow and is answered with the
+   render. After that the server drives it: a TICK a second, sent with
+   `send-event!` and carrying the value to show, each one rendered and pushed
+   down the stream.
 
-   No `data-signals`: `:remaining` is server-owned, held by the flow."
+   No `data-signals`: `:remaining` comes with each TICK, as the event's
+   params. Nothing is kept between events."
   (:require
    [taia.ds.examples.inspect :as inspect]))
 

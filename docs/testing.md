@@ -65,15 +65,14 @@ The same rules hold for the library's own tests (inline RCF `(tests …)` blocks
 
 ## Driving a connected component's flow
 
-A connected component keeps its ctx in its flow between events, so `run`/`step` (which rebuild the
-ctx from the request every time) cannot follow it. Start the flow headless instead:
+`run`/`step` cover a connected component's browser events too: nothing is kept between events, so
+each one starts from its request. For a server event (`send-event!`: no request, its own params),
+or to run events through one long-lived flow as a connection does, start the flow headless:
 
 ```clojure
-(def cf (ds/start-component-flow! {:component-name "live.countdown" :component-id "countdown1"
-                                   :keep-ctx? true}))
-(ds/run-flow-event! cf req "init")     ; a browser event: req carries signals and params
-(ds/run-flow-event! cf req "start")
-(ds/run-flow-event! cf nil "tick")     ; a server event, like send-event!: no request at all
+(def cf (ds/start-component-flow! {:component-name "live.countdown" :component-id "countdown1"}))
+(ds/run-flow-event! cf req "init")                    ; a browser event: req carries signals and params
+(ds/run-flow-event! cf nil "tick" {:remaining 4})     ; a server event, like send-event!: params only
 (ds/stop-component-flow! cf)
 ```
 

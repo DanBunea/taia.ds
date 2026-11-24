@@ -28,9 +28,13 @@ in-chan ──▶ :controller ──:to-view──▶ :view ──▶ out-chan
 
 The machine and the render fn are resolved once, when the flow is built. A one-shot event
 (`/ds/nds/…`) gets a flow of its own, which is stopped as soon as it answers. A connected
-component's flow lives as long as its stream, and its `:controller` **holds the ctx** between
-events: each event transitions from where the previous one left off, not from what the client
-sends back.
+component's flow lives as long as its stream, so later events go in through the same in-chan.
+
+**Nothing is kept between events**, one-shot or connected. A browser event starts from the
+tab's signals (its `:state` and `:memory`), exactly as in a one-shot component. A server event
+has no request and no signals: it starts from the machine's initial state, and brings what it
+needs as its params. Whatever an action adds to the ctx for a render (a result list, say) is
+rendered, sent, and gone; nothing grows on the server per connection.
 
 Two kinds of event reach that flow after the INIT.
 
@@ -56,32 +60,23 @@ handler, so the click still renders.
 **A server event**: `send-event!`.
 
 ```clojure
-(ds/send-event! "countdown1" "alice" "tick" {})   ; => true, or false with no open stream
+(ds/send-event! "countdown1" "alice" "tick" {:remaining 4})   ; => true, or false with no open stream
 ```
 
 ![The live counter: a click and the REPL's (inc!) both send :INCREMENT through the same in-chan; the same controller and view run; the count goes 1, 2, 3, the last render over the open stream](img/repl-event-flow.gif)
 
-It transitions from the held ctx with no request at all, and its render is pushed down that
+It runs from the machine's initial state with its params, and its render is pushed down that
 user's stream, on the same ordered write queue as `send-ui!`. The sender's mulog context travels
 with it. This is the counterpart of `send-ui!` that keeps the component's own render fn as the
 single source of markup: send the *event*, not the patch.
 
-### How the held ctx and the client's signals combine
+### What a server event starts from
 
-A browser event still carries the client's signal store. With a held ctx:
-
-- `:memory` is the held memory with the client's signals merged over it: client-owned values
-  (form inputs) win;
-- `:state` is the **held** state: while the flow lives the server is the authority on the FSM
-  position, and the client's echo can be stale after a server push;
-- `:logged-user`, `:app-config` and `:request-method` come from the new request (a server event
-  keeps the held ones, minus `:request-method`).
-
-So keep server-owned values **outside** `:memory` (top-level ctx keys, like the countdown's
-`:remaining`): a stale signal echo can then never overwrite them.
-
-The held ctx lives in memory and dies with the stream. A reconnect starts a new flow from INIT,
-so anything that must survive one belongs in your own storage, read by INIT.
+Since a server event starts from the machine's initial state, handle it where that state can see
+it (on the machine's own `:on`, for an event that can arrive in any state) and send what its
+action needs as params. The countdown's ticker sends `{:remaining 4}`, `{:remaining 3}`, … and
+its TICK, handled at the machine level, sets `:remaining` from them. State that must be shared
+or outlive a tab (the live counter's count) lives in your own storage, and actions read it.
 
 ## Pushing
 
@@ -104,12 +99,10 @@ keep the example in one file; do not read that as a recommendation.
 
 ## Mixing one-shot and connected
 
-Clicks on a connected component may also be ordinary `@post` events to `/ds/nds/…`, as in the
-[live counter](examples/02-live-counter.md): they run in a flow of their own, from the client's
-signals, and never see the held ctx. Their one-shot response patches the clicking tab, and a push
-patches everybody. Datastar morphs by id, so a tab receiving both ends up with the same DOM. Post
-to `/ds/nds-connect/…` instead when the event should continue the connection's held state, as in
-the [countdown](examples/07-countdown.md).
+Clicks on a connected component may also be ordinary `@post` events to `/ds/nds/…`: they run in a
+flow of their own, from the client's signals, exactly like a POST to `/ds/nds-connect/…` (which
+goes through the stream's flow instead). Either way the response patches the clicking tab, and a
+push patches everybody. Datastar morphs by id, so a tab receiving both ends up with the same DOM.
 
 ## The reconnect watchdog
 

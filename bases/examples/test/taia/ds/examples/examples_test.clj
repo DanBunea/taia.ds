@@ -572,15 +572,16 @@
  (weather-api/describe-code 42) := "Weather code 42")
 
 (tests
- ;; The countdown is a CONNECTED component: its flow holds the ctx between
- ;; events, so a case is a sequence of events on one flow. Every call below
- ;; starts its own flow, sends the case's events through it and stops it.
- ;; START starts a real ticker, so a case that sends it stubs the ticker with
- ;; a spy (no real TICK arrives; the case sends its TICKs itself).
+ ;; The countdown is a CONNECTED component, but nothing is kept between
+ ;; events: a click starts from the tab's signals (it has none, so :idle), a
+ ;; server event from the machine's initial state with its params. Every call
+ ;; below starts its own flow, INITs it, sends the case's events through it
+ ;; and stops it. START starts a real ticker, so a case that sends it stubs
+ ;; the ticker with a spy (no real TICK arrives; the case sends its TICKs).
  (defn- through-a-flow
-   "Starts a fresh countdown flow and INITs it (:idle at 5), then sends each of
-    `events` in order — `[:browser event opts]` is a POST to the connected
-    path, `[:server event]` is `ds/send-event!` (no request) — stops the flow
+   "Starts a fresh countdown flow and INITs it, then sends each of `events` in
+    order — `[:browser event opts]` is a POST to the connected path,
+    `[:server event params]` is `ds/send-event!` (no request) — stops the flow
     and returns the last result."
    [& events]
    (let [[cf init] (ts/connect "live.countdown" "countdown1" {})]
@@ -588,13 +589,13 @@
        (reduce (fn [_ [kind event opts]]
                  (case kind
                    :browser (ts/flow-event cf "countdown1" event opts)
-                   :server (ts/server-event cf event)))
+                   :server (ts/server-event cf event opts)))
                init
                events)
        (finally
          (ds/stop-component-flow! cf)))))
 
- "7 countdown: INIT through the flow — :idle, :remaining is top-level ctx, never in :memory"
+ "7 countdown: INIT through the flow — :idle at 5, :remaining is top-level ctx, never in :memory"
  (through-a-flow) := {:memory {} :state :idle :html _ :ctx _}
  (-> (through-a-flow)
      :ctx
@@ -606,62 +607,49 @@
  := "5"
 
  "7 countdown: START is a browser event through the flow; it moves to :running
-  and starts the ticker for this tab"
+  at 5 and starts the ticker for this tab"
  (with-redefs [countdown/start-ticker! (spy/spy)]
    (through-a-flow [:browser "start"]) := {:memory {} :state :running :html _ :ctx _}
    (spy/called-once-with? countdown/start-ticker! "countdown1" "tester" 5) := true)
-
- "7 countdown: every TICK is a server event with no request at all; it
-  transitions from the held ctx"
  (with-redefs [countdown/start-ticker! (spy/spy)]
-   (-> (through-a-flow [:browser "start"]
-                       [:server "tick"])
-       :html
-       (testid-text "remaining"))
-   := "4")
-
- "7 countdown: the fifth TICK lands in :done at 0"
- (with-redefs [countdown/start-ticker! (spy/spy)]
-   (through-a-flow [:browser "start"]
-                   [:server "tick"] [:server "tick"] [:server "tick"] [:server "tick"] [:server "tick"])
-   := {:memory {} :state :done :html _ :ctx _}
-   (-> (through-a-flow [:browser "start"]
-                       [:server "tick"] [:server "tick"] [:server "tick"] [:server "tick"] [:server "tick"])
-       :html
-       (testid-text "remaining"))
-   := "0"
-   (-> (through-a-flow [:browser "start"]
-                       [:server "tick"] [:server "tick"] [:server "tick"] [:server "tick"] [:server "tick"])
-       :html
-       (testid-text "phase")
-       (str/includes? "server sent every tick"))
-   := true)
-
- "7 countdown: START again from :done restarts the countdown"
- (with-redefs [countdown/start-ticker! (spy/spy)]
-   (through-a-flow [:browser "start"]
-                   [:server "tick"] [:server "tick"] [:server "tick"] [:server "tick"] [:server "tick"]
-                   [:browser "start"])
-   := {:memory {} :state :running :html _ :ctx _}
-   ;; the ticker started twice: the first START, then the restart from :done
-   (spy/calls countdown/start-ticker!) := [["countdown1" "tester" 5] ["countdown1" "tester" 5]])
- (with-redefs [countdown/start-ticker! (spy/spy)]
-   (-> (through-a-flow [:browser "start"]
-                       [:server "tick"] [:server "tick"] [:server "tick"] [:server "tick"] [:server "tick"]
-                       [:browser "start"])
+   (-> (through-a-flow [:browser "start"])
        :html
        (testid-text "remaining"))
    := "5")
 
- "7 countdown: a click carrying a stale :state echo does not move the held
-  state — the flow is the authority"
- ;; the echo claims :idle (where TICK does nothing); the held :running wins
+ "7 countdown: a TICK is a server event — no request, no signals: it starts
+  from the machine's initial state and shows the :remaining it carries"
+ (through-a-flow [:server "tick" {:remaining 4}]) := {:memory {} :state :running :html _ :ctx _}
+ (-> (through-a-flow [:server "tick" {:remaining 4}])
+     :html
+     (testid-text "remaining"))
+ := "4"
+
+ "7 countdown: the TICK carrying 0 lands in :done"
+ (through-a-flow [:server "tick" {:remaining 0}]) := {:memory {} :state :done :html _ :ctx _}
+ (-> (through-a-flow [:server "tick" {:remaining 0}])
+     :html
+     (testid-text "remaining"))
+ := "0"
+ (-> (through-a-flow [:server "tick" {:remaining 0}])
+     :html
+     (testid-text "phase")
+     (str/includes? "server sent every tick"))
+ := true
+
+ "7 countdown: nothing is carried between events — after START (5), a TICK
+  shows what it carries, not START's value minus one"
  (with-redefs [countdown/start-ticker! (spy/spy)]
-   (through-a-flow [:browser "start"]
-                   [:browser "tick" {:state "idle"}])
-   := {:memory {} :state :running :html _ :ctx _}
    (-> (through-a-flow [:browser "start"]
-                       [:browser "tick" {:state "idle"}])
+                       [:server "tick" {:remaining 2}])
        :html
        (testid-text "remaining"))
-   := "4"))
+   := "2")
+
+ "7 countdown: the page sends no state, so \"Again\" on a finished countdown
+  is a START from :idle — it restarts the ticker"
+ (with-redefs [countdown/start-ticker! (spy/spy)]
+   (through-a-flow [:server "tick" {:remaining 0}]
+                   [:browser "start"])
+   := {:memory {} :state :running :html _ :ctx _}
+   (spy/called-once-with? countdown/start-ticker! "countdown1" "tester" 5) := true))
