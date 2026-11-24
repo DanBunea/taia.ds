@@ -3,7 +3,7 @@
 Datastar + XState-style state machines + Clojure: an opinionated, component-based library for server-side UI.
 
 ```clojure
-io.github.danbunea/taia.ds {:mvn/version "0.3.0"}
+io.github.danbunea/taia.ds {:mvn/version "0.3.1"}
 ```
 
 Server-side UI components over [Datastar](https://data-star.dev/) SSE, LiveView-style, for Clojure/Ring.
@@ -280,7 +280,7 @@ published. `build.clj` inlines the bricks into one jar whose pom lists Maven lib
 1. Verify the `io.github.danbunea` group once on Clojars: create a public GitHub repository named
    `clojars-danbunea` (see [Verified Group Names](https://github.com/clojars/clojars-web/wiki/Verified-Group-Names)).
 2. Create a Clojars deploy token and export `CLOJARS_USERNAME` and `CLOJARS_PASSWORD` (the token).
-3. `bb deploy` (optionally `bb deploy :version '"0.3.0"'`), then tag `v<version>`.
+3. `bb deploy` (optionally `bb deploy :version '"0.3.1"'`), then tag `v<version>`.
 
 ## Migrating from the in-app namespaces
 
