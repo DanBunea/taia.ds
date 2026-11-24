@@ -29,8 +29,7 @@ stateDiagram-v2
 - Each TICK is a server event: no request, no signals, nothing kept from the event before. It
   starts from the machine's initial state, so TICK is handled on the machine's own `:on` (from
   any state), and its action, the named fn `tick`, sets `:remaining` from the params. The render
-  fn turns it into a patch pushed down the stream. The controller never builds a patch by hand,
-  unlike the [live counter](02-live-counter.md)'s `send-ui!`.
+  fn turns it into a patch pushed down the stream. The controller never builds a patch by hand.
 - `send-event!` returns false once the tab's stream has closed, and that stops the ticker.
 - Each tab (each `?user=`) has its own stream, so its own flow and its own countdown.
 

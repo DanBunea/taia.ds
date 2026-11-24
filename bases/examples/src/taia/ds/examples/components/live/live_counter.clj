@@ -1,37 +1,37 @@
 (ns taia.ds.examples.components.live.live-counter
-  "Example 2 — Live counter (a connected component).
+  "Example 2 — Live counter (a connected component, two ways in).
 
    The page mounts this component with `@get('/ds/nds-connect/…/init')`, so
-   the INIT render arrives over an SSE stream that then STAYS OPEN. The
-   server can now push into this tab at any time with `send-ui!`.
+   the INIT render arrives over an SSE stream that then STAYS OPEN, with the
+   component's flow behind it. Two kinds of event go in through that flow's
+   in-chan:
 
-   The count is server-owned (an atom in the controller) and there is no
-   `data-signals` here: nothing round-trips because nothing is the client's
-   to own. Each click POSTs to the nds-connect path, so it runs through the
-   flow this tab's stream opened (the same in-chan the REPL's `inc!` uses);
-   its action bumps the atom and broadcasts the new render to every tab
-   connected under this component-id — open the page twice as `?user=alice`
-   and `?user=bob`.
+   * a click: a `@post` to the same nds-connect path, carrying the tab's
+     signals — the count is the tab's, in `:memory`, round-tripped through
+     `data-signals` like the basic counter's;
+   * a server event: `send-event!` (from the REPL, a job, an agent), which has no
+     signals and so brings the count as its params. Its render comes down the
+     open stream, and the render's `data-signals` update the tab's store.
 
-   Keep the fragment user-neutral: the same markup lands in everyone's tab."
+   Nothing is kept on the server between events."
   (:require
-   [taia.ds.examples.inspect :as inspect]
-   [clojure.string :as str]))
+   [taia.ds.datastar.interface :as ds]
+   [taia.ds.examples.inspect :as inspect]))
 
 (defn- post [cid event]
   ;; The nds-connect path: a click runs through the flow this tab's stream
-  ;; opened, the same in-chan `send-event!` (and the REPL's `inc!`) uses.
+  ;; opened, the same in-chan `send-event!` uses.
   ;; `$user` is the page-level signal the home page seeds; every request carries it
   ;; as ?user= so the examples app can tell the tabs apart.
   (str "@post('/ds/nds-connect/live.live-counter/" cid "/" event "?user='+$user)"))
 
-(defn live-counter [{:keys [component-id count] :as ctx}]
-  [:div.card {:id component-id}
+(defn live-counter [{:keys [component-id memory] :as ctx}]
+  [:div.card {:id component-id :data-signals (ds/ctx->data-signals ctx)}
    [:h2 "Live counter"]
-   [:p.big {:data-testid "count"} (str (or count 0))]
+   [:p.big {:data-testid "count"} (str (:count memory 0))]
    [:div.row
-    [:button {:type "button" :data-testid "inc" "data-on:click" (post component-id "increment")} "+1 for everyone"]
-    [:button.secondary {:type "button" "data-on:click" (post component-id "reset")} "Reset"]]
-   [:p.muted (str/join " " ["The number is an atom on the server." "Every tab connected to this component-id sees each change at once,"
-                            "pushed through its own SSE stream." "Open this page in a second tab with a different ?user= to watch it."])]
+    [:button {:type "button" :data-testid "inc" "data-on:click" (post component-id "increment")} "+1"]
+    [:button.secondary {:type "button" :data-testid "reset" "data-on:click" (post component-id "reset")} "Reset"]]
+   [:p.muted "The count is this tab's, in " [:code ":memory"] ". A click and a server event ("
+    [:code "send-event!"] ") go in through the same in-chan; a server event's render comes down the open stream."]
    (inspect/state-pre ctx)])

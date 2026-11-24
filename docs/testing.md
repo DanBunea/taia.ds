@@ -118,8 +118,8 @@ bb e2e-test --headed
 One spec per example in [`e2e/tests/`](../e2e/tests/). Every spec installs
 [`console-guard.ts`](../e2e/tests/helpers/console-guard.ts), which fails the test on any
 `pageerror` or `console.error` (network aborts on navigation are ignored) — the only reliable
-detector of an aborted attribute pass. `live-counter.spec.ts` opens two browser contexts as two
-users and asserts a click in one is pushed into the other over SSE.
+detector of an aborted attribute pass. `live-counter.spec.ts` drives a connected component's
+clicks through its flow, with two browser contexts as two users counting independently.
 
 ## Conventions used in this repository
 

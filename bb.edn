@@ -33,7 +33,7 @@
                 :task (shell {:dir "e2e"} "node render-flow.mjs ../docs/img/counter-flow.svg ../docs/img/counter-flow.gif 10 13")}
   component-flow-gif {:doc "Regenerate docs/img/component-flow.svg and repl-event-flow.svg from scripts/component_flow_svg.clj, then render both GIFs (needs e2e deps: npm ci in e2e/)"
                       :task (do (shell "bb scripts/component_flow_svg.clj")
-                                (shell {:dir "e2e"} "node render-flow.mjs ../docs/img/component-flow.svg ../docs/img/component-flow.gif 10 31.6")
+                                (shell {:dir "e2e"} "node render-flow.mjs ../docs/img/component-flow.svg ../docs/img/component-flow.gif 10 28.6")
                                 (shell {:dir "e2e"} "node render-flow.mjs ../docs/img/repl-event-flow.svg ../docs/img/repl-event-flow.gif 10 33.8"))}
   api-index    {:doc "Regenerate docs/api.md from the brick interface namespaces"
                 :task (load-file "scripts/api_index.clj")}

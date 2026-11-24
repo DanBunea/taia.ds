@@ -93,6 +93,7 @@
   (ds/connections) ; who can be reached: {component-id [user-id …]}
   (ds/send-event! "countdown1" "demo-user" "start" {})
 
-  ;; With the live-counter page open: push a fragment to every connected tab.
+  ;; send-ui! pushes a hand-built fragment instead of an event; :broadcast
+  ;; reaches every tab connected under the component-id.
   (ds/send-ui! "live1" "demo-user"
                [[:broadcast [:div#live1 [:h2 "Pushed from the REPL"]] {:d*/selector "#live1"}]]))

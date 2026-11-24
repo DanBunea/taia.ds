@@ -15,7 +15,7 @@
     :summary "One-shot events, `:memory` round-trip through the signal store, the render fn as the single source of markup."
     :doc "01-counter.md"}
    {:example "live-counter" :title "2 · Live counter" :component "live.live-counter" :cid "live1" :connected? true
-    :summary "A connected component: an SSE stream per tab, server-owned state, `send-ui!` fan-out to everyone. Open it twice with `?user=alice` and `?user=bob`."
+    :summary "A connected component with two ways in: a click and a server event (`send-event!`) go through the same in-chan. The count is the tab's, in `:memory`."
     :doc "02-live-counter.md"}
    {:example "signup" :title "3 · Signup form" :component "signup.signup" :cid "signup1"
     :summary "Client-owned form signals with `data-bind`, guarded transitions (`:cond`), an effects list with `:execute-script`."

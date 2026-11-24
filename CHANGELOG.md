@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- cljdoc: `doc/cljdoc.edn` sets `:cljdoc/languages ["clj"]`. The library is JVM-only, and cljdoc's ClojureScript analysis of the `.cljc` interface (which requires `.clj` handlers) failed the whole API import, so 0.2.0 and 0.3.0 have articles but no API pages on cljdoc. Takes effect from the next release.
+- Examples: the live counter keeps its count in the tab's `:memory` (no server atom, no `send-ui!` broadcast). A click carries it in the signals; a server event — `(ds/send-event! "live1" user "increment" {:count n})`, e.g. from the REPL — sends it as params. The controller's REPL helpers `inc!` / `reset!` now take and send the count too. Its e2e spec now checks two users counting independently.
+- README animations: the first no longer has a `send-event!` step (the second covers it); the second shows the REPL sending the memory as params, with no server state.
+
 ## 0.3.0 — 2026-11-24
 
 ### Upgrading from 0.2.0

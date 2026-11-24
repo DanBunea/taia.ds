@@ -28,7 +28,7 @@ and an executable spec in
 | | Shows | Component |
 |-|-------|-----------|
 | [1 · Counter](01-counter.md) | one-shot events, `:memory` round-trip, the render fn as the single source of markup | `basics.counter` |
-| [2 · Live counter](02-live-counter.md) | a connected component: SSE stream, server-owned state, `send-ui!` + `:broadcast` | `live.live-counter` |
+| [2 · Live counter](02-live-counter.md) | a connected component with two ways in: a click and a server event (`send-event!`) through one in-chan | `live.live-counter` |
 | [3 · Signup form](03-signup-form.md) | `data-bind` form signals, guarded transitions, an effects list with `:execute-script` | `signup.signup` |
 | [4 · Wizard](04-wizard.md) | hierarchical states, relative targets, machine-wide RESET, `:invoke` with on-done / on-error | `wizard.wizard` |
 | [5 · TodoMVC](05-todomvc.md) | query-string params, filters, inline editing, keyboard expressions | `todomvc.todomvc` |

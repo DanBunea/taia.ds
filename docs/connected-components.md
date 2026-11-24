@@ -63,7 +63,7 @@ handler, so the click still renders.
 (ds/send-event! "countdown1" "alice" "tick" {:remaining 4})   ; => true, or false with no open stream
 ```
 
-![The live counter: a click and the REPL's (inc!) both send :INCREMENT through the same in-chan; the same controller and view run; the count goes 1, 2, 3, the last render over the open stream](img/repl-event-flow.gif)
+![The live counter: a click and a REPL send-event! both send :INCREMENT through the same in-chan; the click carries the tab's signals, the REPL sends the memory as params; the count goes 1, 2, 3, the last render over the open stream](img/repl-event-flow.gif)
 
 It runs from the machine's initial state with its params, and its render is pushed down that
 user's stream, on the same ordered write queue as `send-ui!`. The sender's mulog context travels
@@ -76,7 +76,8 @@ Since a server event starts from the machine's initial state, handle it where th
 it (on the machine's own `:on`, for an event that can arrive in any state) and send what its
 action needs as params. The countdown's ticker sends `{:remaining 4}`, `{:remaining 3}`, … and
 its TICK, handled at the machine level, sets `:remaining` from them. State that must be shared
-or outlive a tab (the live counter's count) lives in your own storage, and actions read it.
+or outlive a tab lives in your own storage, and actions read it. The live counter's count is the
+tab's, in `:memory`: a server event sends it as params, `{:count 2}`.
 
 ## Pushing
 
@@ -94,8 +95,8 @@ open stream (`:broadcast` is resolved from the registry, so it reaches everyone 
 caller's mulog context travels with the message, so pushes trace under the originating work.
 
 Where pushes come from in practice: a background job, an LLM agent's output handler, another
-user's request. The [live counter](examples/02-live-counter.md) pushes from a transition action to
-keep the example in one file; do not read that as a recommendation.
+user's request. Prefer `send-event!` when the push is a render of the component itself: it
+keeps the component's own render fn as the single source of markup.
 
 ## Mixing one-shot and connected
 

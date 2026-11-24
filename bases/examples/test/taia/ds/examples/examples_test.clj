@@ -107,58 +107,48 @@
       "/ds/nds/basics.counter/counter1/reset"})
 
 (tests
- (defn- live-event
-   "Runs `event` with the server-owned count at `count`."
-   [count event]
-   (reset! live/!count count)
-   (step "live.live-counter" "live1" {:memory {} :state :displayed} event))
+ (defn- server-event
+   "A server event (what `send-event!` sends) through a
+    fresh live-counter flow: no request, no signals — only `params`."
+   [event params]
+   (let [[cf _] (ts/connect "live.live-counter" "live1" {})]
+     (try
+       (ts/server-event cf event params)
+       (finally
+         (ds/stop-component-flow! cf)))))
 
- "2 live counter: the count is server-owned — INIT reads it into ctx, not :memory"
- (live-event 0 "init") := {:memory {} :state :displayed :html _ :ctx _}
- (-> (live-event 0 "init")
-     :ctx
-     :count)
- := 0
- (-> (live-event 0 "init")
+ "2 live counter: INIT seeds the count at 0, in :memory"
+ (run "live.live-counter" "live1" {} "init") := {:memory {:count 0} :state :displayed :html _ :ctx _}
+
+ "2 live counter: a click starts from the count in the tab's signals"
+ (run "live.live-counter" "live1" {:memory {:count 1} :state :displayed} "increment")
+ := {:memory {:count 2} :state :displayed :html _ :ctx _}
+ (-> (run "live.live-counter" "live1" {:memory {:count 1} :state :displayed} "increment")
      :html
      (testid-text "count"))
- := "0"
+ := "2"
 
- "2 live counter: INCREMENT bumps the server count and broadcasts the fresh
-  render to everyone connected under the component-id"
- (with-redefs [ds/send-ui! (spy/spy)]
-   (live-event 0 "increment") := {:memory {} :state :displayed :html _ :ctx _}
-   ;; one call: addressed as this user, fanned out to every tab by the selector
-   (spy/called-once? ds/send-ui!) := true
-   (spy/first-call ds/send-ui!) := ["live1" "tester" [[:broadcast _ {:d*/selector "#live1"}]]]
-   @live/!count := 1)
- (with-redefs [ds/send-ui! (spy/spy)]
-   (-> (live-event 0 "increment")
-       :html
-       (testid-text "count"))
-   := "1")
-
- "2 live counter: a different user, a different tab — same number"
- (with-redefs [ds/send-ui! (spy/spy)]
-   (live-event 0 "increment"))
- (-> (run "live.live-counter" "live1" {:user "bob"} "init")
+ "2 live counter: a server event has no signals, so it brings the count as
+  its params: (ds/send-event! \"live1\" user \"increment\" {:count 2})"
+ (server-event "increment" {:count 2}) := {:memory {:count 3} :state :displayed :html _ :ctx _}
+ (-> (server-event "increment" {:count 2})
      :html
      (testid-text "count"))
- := "1"
+ := "3"
 
- "2 live counter: RESET puts the server count back to 0 and broadcasts it"
- (with-redefs [ds/send-ui! (spy/spy)]
-   (live-event 3 "reset") := {:memory {} :state :displayed :html _ :ctx _}
-   (spy/called-once? ds/send-ui!) := true
-   (spy/first-call ds/send-ui!) := ["live1" "tester" [[:broadcast _ {:d*/selector "#live1"}]]]
-   @live/!count := 0)
- (with-redefs [ds/send-ui! (spy/spy)]
-   (-> (live-event 3 "reset")
-       :html
-       (testid-text "count"))
-   := "0")
+ "2 live counter: the render carries the count in data-signals, so a render
+  pushed down the stream updates the tab's store for its next click"
+ (-> (server-event "increment" {:count 2})
+     :html
+     second
+     :data-signals
+     (str/includes? "\"count\":3"))
+ := true
 
- (reset! live/!count 0))
+ "2 live counter: RESET puts the count back to 0, from a click or a server event"
+ (run "live.live-counter" "live1" {:memory {:count 3} :state :displayed} "reset")
+ := {:memory {:count 0} :state :displayed :html _ :ctx _}
+ (server-event "reset" {}) := {:memory {:count 0} :state :displayed :html _ :ctx _})
 
 (tests
  (defn- signup-event [from event]

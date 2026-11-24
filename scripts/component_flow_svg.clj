@@ -308,7 +308,7 @@
     :packet {:path [[334 230] [420 230] [538 230]] :move [4.3 5.3] :label "[:INCREMENT {}] + {:count 1}" :color EVENT-C}
     :glow [:in-chan]
     :title "A click puts an event on the in-chan"
-    :text ["The POST carries the event and the component's signals: [:INCREMENT {}] with {:count 1 :state \"displayed\"}."]}
+    :text ["The POST carries the event and the component's signals: [:INCREMENT {}] with {\"counter1\": {\"count\": 1, \"state\": \"displayed\"}}."]}
    {:t [7.8 11.6]
     :glow [:controller]
     :code [:inc :machine]
@@ -325,20 +325,13 @@
     :code [:render]
     :title "The view renders"
     :text ["(counter ctx) → hiccup: the new count, and the signals the page will send back next time."]}
-   {:t [18.4 22.4]
+   {:t [18.4 23.4]
     :packet {:path [[538 520] [420 520] [334 520]] :move [18.6 19.6] :label "<div id=\"counter1\"> … 2 …" :color HTML-C}
     :glow [:out-chan :card :signals]
     :morph 19.6
     :title "Out of the out-chan, into the page"
-    :text ["Datastar morphs #counter1 by id, and the signals now hold {:count 2}."
-           "A one-shot component's flow stops here: every click builds its own."]}
-   {:t [22.4 26.2]
-    :packet {:path [[420 358] [420 230] [538 230]] :move [23.2 24.2] :label "server event" :color SERVER-C}
-    :glow [:send :controller]
-    :show-send 22.4
-    :title "A connected component's flow stays up"
-    :text ["It lives as long as the page's SSE stream: (ds/send-event! cid user \"tick\" {:remaining 4}) puts a"
-           "server event, with its params, on the same in-chan; its render goes out the same way, down the stream."]}])
+    :text ["Datastar morphs #counter1 by id, and the signals now hold {\"counter1\": {\"count\": 2, …}}."
+           "A one-shot component's flow stops here: every click builds its own."]}])
 
 (def counter-opening
   {:t [0.0 4.6]
@@ -349,12 +342,10 @@
 
 (def card {:x 52 :y 142 :w 260 :h 210})
 (def signals {:x 52 :y 404 :w 260 :h 92})
-(def send-pill [420 380])
 
 (defn counter-scene []
   (let [click-t (some :click *steps*)
-        morph-t (some :morph *steps*)
-        send-t  (some :show-send *steps*)]
+        morph-t (some :morph *steps*)]
     (frame
      {:title "taia.ds — a component is a flow"
       :subtitle "clojure.core.async.flow · in-chan → controller → view → out-chan"
@@ -374,8 +365,7 @@
        [518 :render ["   [" [":p.big" kw-c] " (str (" [":count" kw-c] " memory " ["0" num-c] "))]"]]
        [538 nil ["   [" [":button" kw-c] " {" ["\"data-on:click\"" str-c] " (post component-id " ["\"increment\"" str-c] ")} " ["\"+\"" str-c] "] …])"]]]
       :glow-targets {:card    [card 12]
-                     :signals [signals 12]
-                     :send    [(pill-box send-pill) 20]}
+                     :signals [signals 12]}
       :left
       (str
        (rect left-col :rx 16 :fill "#ffffff" :stroke BOX-BORDER :stroke-width 1.5)
@@ -405,18 +395,11 @@
        (text 52 570 "this component's slice becomes :memory" :font-size 13 :fill MUTED)
        (wire [[334 230] [362 230]])
        (wire [[362 520] [336 520]]))
-      :extras
-      ;; send-event! appears in the last step (a put! onto the in-chan: dashed)
-      (str "<g opacity=\"0\">" (window send-t (- *T* 0.3))
-           ;; break the flow's border under the wire: the put! comes from outside
-           (rect {:x 418 :y 252 :w 4 :h 108} :fill BODY-BG)
-           (wire [[420 358] [420 252]] true)
-           (chan-pill send-pill "send-event!" true)
-           "</g>")})))
+      :extras ""})))
 
 ;;; ---------------------------------------------------------------------------
 ;;; Scene 2 — a connected component (the live counter) with two senders on one
-;;; in-chan: the browser on the left, the REPL's (inc!) on the right
+;;; in-chan: the browser on the left, a REPL send-event! on the right
 ;;; ---------------------------------------------------------------------------
 
 (def browser2 {:x 32 :y 140 :w 210 :h 450})
@@ -425,7 +408,6 @@
 (def flow2 {:x 310 :y 140 :w 656 :h 450})
 (def controller2 {:x 386 :y 166 :w 560 :h 206})
 (def view2 {:x 386 :y 410 :w 560 :h 162})
-(def state2 {:x 402 :y 330 :w 528 :h 32})
 (def in-chan2 [640 108])
 (def out-chan2 [310 480])
 (def stream-badge {:x 50 :y 448 :w 132 :h 22})
@@ -446,13 +428,12 @@
            "The browser and the server both send it events through the same in-chan."]}
    {:t [8.6 12.8]
     :click 9.0
-    :packet {:path [[browser-x 140] [browser-x bus-y] [640 bus-y] [640 168]] :move [9.4 10.8] :label "[:INCREMENT {}]" :color EVENT-C}
+    :packet {:path [[browser-x 140] [browser-x bus-y] [640 bus-y] [640 168]] :move [9.4 10.8] :label "[:INCREMENT {}] + {:count 1}" :color EVENT-C}
     :glow [:in-chan :browser]
     :code [:inc :machine]
-    :count-change 11.2
     :title "A click: +1 into the in-chan"
-    :text ["@post('/ds/nds-connect/live.live-counter/live1/increment') runs through the flow the stream opened;"
-           "(change! inc) bumps !count from 1 to 2 (and pushes it to any other tab with send-ui!)."]}
+    :text ["@post('/ds/nds-connect/live.live-counter/live1/increment') carries the tab's signals,"
+           "{\"live1\": {\"count\": 1, \"state\": \"displayed\"}}; increment takes the count from the memory: 1 → 2."]}
    {:t [12.8 16.6]
     :packets [{:path [[666 374] [666 410]] :move [13.0 13.6] :label "ctx {:count 2}" :color CTX-C}
               {:path [[384 480] [310 480] [190 480]] :move [14.0 15.0] :label "<div#live1> 2" :color HTML-C}]
@@ -460,21 +441,21 @@
     :code [:render]
     :morph 15.0
     :title "…and the render comes back"
-    :text ["The view renders the new ctx, and the POST is answered with it: the tab shows 2."]}
+    :text ["The view renders the new ctx, and the POST is answered with it: the tab shows 2,"
+           "and its signals now hold {\"live1\": {\"count\": 2, \"state\": \"displayed\"}}."]}
    {:t [16.6 21.2]
     :type 16.9
-    :packet {:path [[repl-x 140] [repl-x bus-y] [640 bus-y] [640 168]] :move [17.8 19.2] :label "[:INCREMENT {}]" :color SERVER-C}
+    :packet {:path [[repl-x 140] [repl-x bus-y] [640 bus-y] [640 168]] :move [17.8 19.2] :label "[:INCREMENT {:count 2}]" :color SERVER-C}
     :reply 18.0
     :glow [:repl :in-chan]
     :title "The REPL: the same event, into the same in-chan"
-    :text ["(inc!) is (ds/send-event! \"live1\" \"demo-user\" \"increment\" {}): a server event,"
-           "no request and no signals. It answers with the user it went through."]}
+    :text ["(ds/send-event! \"live1\" \"demo-user\" \"increment\" {:count 2}): a server event has no request"
+           "and no signals, so the REPL sends the memory as params. It answers true at once."]}
    {:t [21.2 24.8]
-    :glow [:controller :state]
+    :glow [:controller]
     :code [:inc :machine]
-    :count-change 22.0
     :title "The same controller code runs"
-    :text ["(change! inc) again: !count goes from 2 to 3. The controller can't tell a click from a REPL call."]}
+    :text ["increment takes the count from the params this time: 2 → 3. Nothing is kept on the server."]}
    {:t [24.8 29.2]
     :packets [{:path [[666 374] [666 410]] :move [25.0 25.6] :label "ctx {:count 3}" :color CTX-C}
               {:path [[384 480] [310 480] [190 480]] :move [26.0 27.0] :label "<div#live1> 3" :color HTML-C}]
@@ -482,7 +463,8 @@
     :code [:render]
     :morph 27.0
     :title "Down the open stream, into the page"
-    :text ["Nobody asked this time, so the render is pushed down the page's SSE stream. The tab shows 3."]}
+    :text ["Nobody asked this time, so the render is pushed down the page's SSE stream. The tab shows 3,"
+           "and its signals hold {\"live1\": {\"count\": 3, …}} for the next click."]}
    {:t [29.2 33.4]
     :glow [:browser :repl :in-chan]
     :title "Two senders, one in-chan"
@@ -494,19 +476,20 @@
         type-t (some :type *steps*)
         reply-t (some :reply *steps*)
         [morph1 morph2] (keep :morph *steps*)
-        [count1 count2] (keep :count-change *steps*)
         repl-line (fn [y segs] (code-line (+ (:x repl2) 18) y segs {:size 13 :fill "#e5e7eb"}))
         c-comment "#7d8b85"
         c-str "#86efac"
         c-out "#f9a8d4"
         big (fn [n] (text 62 292 n :font-size 56 :font-weight 700 :fill TEXT))
-        server-count (fn [n] (code-line 510 351 ["@!count ⇒ " [(str n) num-c]] {:size 13}))
+        signals-of (fn [n]
+                     (str (code-line 58 338 ["{" ["\"live1\"" str-c] ": {" ["\"count\"" str-c] ": " [(str n) num-c] ","] {:size 11})
+                          (code-line 58 354 ["  " ["\"state\"" str-c] ": " ["\"displayed\"" str-c] "}}"] {:size 11})))
         cx (+ (:x controller2) 22)
         vx (+ (:x view2) 22)]
     (page
      {:title "taia.ds — a connected component: the browser and the REPL, one in-chan"
       :subtitle "a click (POST) and a server event (send-event!) enter the same flow, and run the same controller and view"
-      :generated "Two senders, one in-chan: a click and the REPL's (inc!) into the connected live counter's flow"
+      :generated "Two senders, one in-chan: a click and a REPL send-event! into the connected live counter's flow"
       :yours [controller2 view2]}
      (str
       ;; ---- the browser (left)
@@ -515,12 +498,12 @@
       (rect card2 :rx 12 :fill "#ffffff" :stroke "#eee8ea" :stroke-width 1.5)
       (text 62 220 "Live counter" :font-size 18 :font-weight 600 :fill TEXT)
       (flip morph1 (big "1") (flip morph2 (big "2") (big "3")))
-      (text 62 322 "The number is an atom" :font-size 12 :fill MUTED)
-      (text 62 338 "on the server." :font-size 12 :fill MUTED)
+      (text 58 318 "signals (data-signals)" :font-size 12 :fill MUTED)
+      (flip morph1 (signals-of 1) (flip morph2 (signals-of 2) (signals-of 3)))
       (rect {:x 62 :y 366 :w 150 :h 36} :rx 18 :fill PINK)
       "<rect x=\"62\" y=\"366\" width=\"150\" height=\"36\" rx=\"18\" fill=\"" ACCENT-TEXT "\" opacity=\"0\">"
       (anim-opacity [[click-t 0] [(+ click-t 0.05) 1] [(+ click-t 0.35) 1] [(+ click-t 0.5) 0]]) "</rect>"
-      (text 137 389 "+1 for everyone" :text-anchor "middle" :font-size 14 :font-weight 600 :fill "#ffffff")
+      (text 137 389 "+1" :text-anchor "middle" :font-size 15 :font-weight 600 :fill "#ffffff")
       (cursor-click click-t [150 386])
       (rect stream-badge :rx 11 :fill "#f0fdf4" :stroke "#bbf7d0" :stroke-width 1.2)
       "<circle cx=\"63\" cy=\"459\" r=\"4.5\" fill=\"" SUCCESS "\">"
@@ -537,12 +520,12 @@
       (repl-line 204 ["(ds/connections)"])
       (repl-line 222 [[";; => {\"live1\"" c-comment]])
       (repl-line 240 [[";;     [\"demo-user\"]}" c-comment]])
-      (appear type-t (repl-line 278 ["(" ["inc!" c-str] ")"]))
-      (appear reply-t (repl-line 298 [[";; => \"demo-user\"" c-out]]))
-      (repl-line 334 [[";; inc! is (ds/send-event!" c-comment]])
-      (repl-line 352 [[";;   \"live1\" \"demo-user\"" c-comment]])
-      (repl-line 370 [[";;   \"increment\" {})" c-comment]])
-      (repl-line 410 [[";; same in-chan as a click" c-comment]])
+      (appear type-t (repl-line 278 ["(ds/send-event!"]))
+      (appear (+ type-t 0.25) (repl-line 296 ["  " ["\"live1\"" c-str] " " ["\"demo-user\"" c-str]]))
+      (appear (+ type-t 0.5) (repl-line 314 ["  " ["\"increment\"" c-str] " {" [":count" "#f9a8d4"] " " ["2" num-c] "})"]))
+      (appear reply-t (repl-line 340 [[";; => true" c-out]]))
+      (repl-line 392 [[";; no signals: the memory" c-comment]])
+      (repl-line 410 [[";; goes as params" c-comment]])
 
       ;; ---- the senders' wires: one line along the top, into the in-chan
       (wire [[browser-x 140] [browser-x bus-y] [582 bus-y]])
@@ -554,20 +537,17 @@
       (rect flow2 :rx 16 :fill "#ffffff" :fill-opacity "0.55" :stroke BOX-BORDER :stroke-width 1.5)
       (text 326 176 "flow" :font-size 22 :font-weight 600 :fill TEXT)
       (proc-box controller2 "controller" "live.live-counter-controller")
-      (code-block [[242 nil ["(defonce !count (atom " ["0" num-c] "))"]]
-                   [262 nil ["(defn- " ["change!" kw-c] " [f]"]]
-                   [280 :inc ["  (fn [ctx _] (swap! !count f)"]]
-                   [298 :inc ["    (push-to-everyone! (with-count ctx))))"]]
-                   [318 :machine ["(def machine … {" [":INCREMENT" kw-c] " {" [":actions" kw-c] " (change! inc)} …})"]]]
+      (code-block [[250 :inc ["(defn- " ["increment" kw-c] " [ctx {" [":keys" kw-c] " [count]}]"]]
+                   [270 :inc ["  (assoc-in ctx [" [":memory" kw-c] " " [":count" kw-c] "]"]]
+                   [290 :inc ["            (inc (or count (get-in ctx [" [":memory" kw-c] " " [":count" kw-c] "]) " ["0" num-c] "))))"]]
+                   [322 nil ["(def machine"]]
+                   [342 :machine ["  … {" [":INCREMENT" kw-c] " {" [":actions" kw-c] " increment} …})"]]]
                   cx 528 13)
-      (rect state2 :rx 8 :fill SESSION-BG :stroke SESSION-DIVIDER :stroke-width 1.2)
-      (text 414 351 "server state" :font-size 12 :font-weight 600 :fill ACCENT-TEXT)
-      (flip count1 (server-count 1) (flip count2 (server-count 2) (server-count 3)))
       (proc-box view2 "view" "live.live-counter")
-      (code-block [[486 nil ["(defn " ["live-counter" kw-c] " [{" [":keys" kw-c] " [component-id count] " [":as" kw-c] " ctx}]"]]
-                   [504 nil ["  [" [":div.card" kw-c] " {" [":id" kw-c] " component-id}"]]
-                   [522 :render ["   [" [":p.big" kw-c] " {" [":data-testid" kw-c] " " ["\"count\"" str-c] "} (str (or count " ["0" num-c] "))]"]]
-                   [540 nil ["   [" [":button" kw-c] " … " ["\"+1 for everyone\"" str-c] "] …])"]]]
+      (code-block [[486 nil ["(defn " ["live-counter" kw-c] " [{" [":keys" kw-c] " [component-id memory] " [":as" kw-c] " ctx}]"]]
+                   [504 :render ["  [" [":div.card" kw-c] " {" [":data-signals" kw-c] " (ds/ctx->data-signals ctx) …}"]]
+                   [522 :render ["   [" [":p.big" kw-c] " (str (" [":count" kw-c] " memory " ["0" num-c] "))]"]]
+                   [540 nil ["   [" [":button" kw-c] " … " ["\"+1\"" str-c] "] …])"]]]
                   vx 528 13)
       (wire [[640 128] [640 164]])
       (wire [[666 374] [666 408]])
@@ -579,7 +559,6 @@
      {:flow       [flow2 16]
       :controller [controller2 14]
       :view       [view2 14]
-      :state      [state2 8]
       :in-chan    [(pill-box in-chan2) 20]
       :out-chan   [(pill-box out-chan2) 20]
       :browser    [browser2 16]
@@ -594,5 +573,5 @@
     (spit file (scene)))
   (println "wrote" file))
 
-(write! "docs/img/component-flow.svg" 31.6 (vec (cons counter-opening (shift-steps 4.6 counter-steps))) counter-scene)
+(write! "docs/img/component-flow.svg" 28.6 (vec (cons counter-opening (shift-steps 4.6 counter-steps))) counter-scene)
 (write! "docs/img/repl-event-flow.svg" 33.8 live-steps live-scene)

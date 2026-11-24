@@ -1,10 +1,31 @@
 import { test, expect } from '@playwright/test';
 import { collectConsoleErrors } from './helpers/console-guard';
 
-// Two browser contexts = two users, each with its own SSE stream. A click in
-// alice's tab must change bob's page with no action on bob's side: that is
-// send-ui! + :broadcast fanning out over /ds/nds-connect/.
-test('live counter: a change in one user\'s tab is pushed to the other', async ({ browser }) => {
+// A connected component with two ways in. The count is the tab's (its
+// :memory, round-tripped through data-signals); a click POSTs to the
+// nds-connect path and runs through the flow the stream opened. (The other
+// way in, a server event — send-event!, e.g. from the REPL — is covered by block 2 of
+// examples_test.clj.)
+test('live counter: clicks go through the connected flow; the count is the tab\'s', async ({ page }) => {
+  const errors = collectConsoleErrors(page);
+
+  await page.goto('/ds/nds/home.home/home/init?example=live-counter&user=alice');
+  // the count arrives over the stream (INIT render), so visible == connected
+  await expect(page.getByTestId('count')).toHaveText('0');
+
+  await page.getByTestId('inc').click();
+  await expect(page.getByTestId('count')).toHaveText('1');
+  await page.getByTestId('inc').click();
+  await expect(page.getByTestId('count')).toHaveText('2');
+
+  await page.getByTestId('reset').click();
+  await expect(page.getByTestId('count')).toHaveText('0');
+
+  expect(errors(), 'console').toEqual([]);
+});
+
+// Nothing is kept on the server: each tab counts on its own.
+test('live counter: two users count independently', async ({ browser }) => {
   const alice = await (await browser.newContext()).newPage();
   const bob = await (await browser.newContext()).newPage();
   const aliceErrors = collectConsoleErrors(alice);
@@ -12,23 +33,13 @@ test('live counter: a change in one user\'s tab is pushed to the other', async (
 
   await alice.goto('/ds/nds/home.home/home/init?example=live-counter&user=alice');
   await bob.goto('/ds/nds/home.home/home/init?example=live-counter&user=bob');
-  // the count arrives over the stream (INIT render), so visible == connected
-  await expect(alice.getByTestId('count')).toBeVisible();
-  await expect(bob.getByTestId('count')).toBeVisible();
-  await expect(bob.getByText('signed in as bob')).toBeVisible();
-
-  const before = Number(await bob.getByTestId('count').textContent());
-
-  await alice.getByTestId('inc').click();
-  await expect(bob.getByTestId('count')).toHaveText(String(before + 1));
-  await expect(alice.getByTestId('count')).toHaveText(String(before + 1));
-
-  await alice.getByTestId('inc').click();
-  await expect(bob.getByTestId('count')).toHaveText(String(before + 2));
-
-  // and the other way round
-  await bob.getByRole('button', { name: 'Reset' }).click();
   await expect(alice.getByTestId('count')).toHaveText('0');
+  await expect(bob.getByTestId('count')).toHaveText('0');
+
+  await alice.getByTestId('inc').click();
+  await alice.getByTestId('inc').click();
+  await expect(alice.getByTestId('count')).toHaveText('2');
+  await expect(bob.getByTestId('count')).toHaveText('0');
 
   expect(aliceErrors(), 'alice console').toEqual([]);
   expect(bobErrors(), 'bob console').toEqual([]);

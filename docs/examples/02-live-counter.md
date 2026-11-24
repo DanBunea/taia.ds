@@ -3,44 +3,56 @@
 `live.live-counter` — [`live_counter.clj`](../../bases/examples/src/taia/ds/examples/components/live/live_counter.clj),
 [`live_counter_controller.clj`](../../bases/examples/src/taia/ds/examples/components/live/live_counter_controller.clj).
 
-A connected component. The home page mounts it with `@get('/ds/nds-connect/…/init')`, so the INIT
-render arrives on an SSE stream that stays open.
+A connected component with two ways in. The home page mounts it with
+`@get('/ds/nds-connect/…/init')`, so the INIT render arrives on an SSE stream that stays open, with
+the component's flow behind it. A click and a server event both go in through that flow's in-chan.
 
 **State machine**
 
 ```mermaid
 stateDiagram-v2
   direction LR
-  [*] --> displayed : INIT / read the server count
-  displayed --> displayed : INCREMENT · RESET (change the server count, push to everyone)
+  [*] --> displayed : INIT / count 0
+  displayed --> displayed : INCREMENT / count + 1 (from the params' count, else the memory's)
+  displayed --> displayed : RESET / count 0
 ```
 
 **What to look at**
 
-- No `data-signals` on the root: the count is an atom on the server, put into top-level ctx by the
-  INIT action. Nothing is the client's to round-trip.
-- `INCREMENT` is a `@post` to the **nds-connect** path, so it runs through the flow the clicking
-  tab's stream opened: the same in-chan the REPL's `(inc!)` sends into. Its action bumps the atom
-  and calls `ds/send-ui!` with a `:broadcast` effect, which reaches every stream registered under
-  the component-id. The clicking tab also gets the POST's response; both patch the same id.
+- The count is the **tab's**: it lives in `:memory` and round-trips through `data-signals`, like
+  the [counter](01-counter.md)'s. Nothing is kept on the server.
+- A click is a `@post` to the **nds-connect** path, so it runs through the flow the tab's stream
+  opened. It carries the tab's signals, so `increment` starts from the count in `:memory`, and
+  the POST is answered with the render.
+- A **server event** — `send-event!`, here from the REPL — has no request and no signals,
+  so it brings the count as its params: `{:count 2}`. `increment` starts from the params' count
+  when there is one. Its render is pushed down the open stream, and the render's `data-signals`
+  update the tab's store, so the next click carries the new count.
 - The buttons append `?user='+$user` from a page-level signal, because the examples app identifies
   users by that query param — stand-in for real authentication, which would set
   `[:params :logged-user]` from a session.
 
-A click and the REPL's `(inc!)`, step by step, through the same in-chan:
+A click and a `send-event!` from the REPL, step by step, through the same in-chan:
 
-![The live counter: a click and the REPL's (inc!) both send :INCREMENT through the same in-chan; the same controller and view run; the count goes 1, 2, 3, the last render over the open stream](../img/repl-event-flow.gif)
+![The live counter: a click and a REPL send-event! both send :INCREMENT through the same in-chan; the click carries the tab's signals, the REPL sends the memory as params; the count goes 1, 2, 3, the last render over the open stream](../img/repl-event-flow.gif)
 
-**Try it**: open the live-counter page as `?example=live-counter&user=alice` and `…&user=bob` side by
-side; click in one, watch the other. From a REPL on port 7789:
+**Try it**: open `?example=live-counter`, click +1 a few times, then from a REPL on port 7789
+(without `&user=…` the examples app signs you in as `demo-user`):
 
 ```clojure
-(taia.ds.datastar.interface/send-ui! "live1" "alice"
-  [[:broadcast [:div#live1 [:h2 "pushed"]] {:d*/selector "#live1"}]])
+(require '[taia.ds.datastar.interface :as ds])
+(ds/send-event! "live1" "demo-user" "increment" {:count 41})   ; the tab shows 42 — the next click makes it 43
+(ds/send-event! "live1" "demo-user" "reset" {})                ; back to 0
 ```
 
-**Caveat**: pushing from a transition action keeps the example in one file; in an application the
-push comes from the thing that knows something changed (a job, an agent, a use case).
+The controller's comment block also has two helpers that pick an open tab for you, `(inc! 41)` and
+`(reset!)`:
 
-**Spec**: block 2 in `examples_test.clj` (the count is in ctx, not `:memory`; a different user sees
-the same number).
+```clojure
+(require '[taia.ds.examples.components.live.live-counter-controller :as live])
+(live/inc! 41)
+(live/reset!)
+```
+
+**Spec**: block 2 in `examples_test.clj` (a click starts from the signals, a server event from its
+params; the render carries the count in `data-signals`), and `e2e/tests/live-counter.spec.ts`.
