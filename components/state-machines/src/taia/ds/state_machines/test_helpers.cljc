@@ -5,7 +5,8 @@
   (:require
    [clojure.string :as str]
    [hyperfiddle.rcf :refer [tests]]
-   [taia.ds.state-machines.interface :as sm])
+   [taia.ds.state-machines.interface :as sm]
+   [spy.core :as spy])
   #?(:clj (:import [clojure.lang ExceptionInfo])))
 
 (defn- fallback-action-kw [event-name]
@@ -133,106 +134,195 @@
 
 ;; Top-level fns so RCF does not instrument them (stable fn->keyword labels).
 (defn- th-named-action [ctx _] (assoc ctx :x 1))
-(defn- th-on-done-act [ctx _r] (assoc ctx :done true))
-(defn- th-on-err-act [ctx e] (assoc ctx :err e))
-(defn- th-act-a [ctx r] (assoc ctx :a (:v r)))
-(defn- th-act-b [ctx r] (assoc ctx :b (:v r)))
+(defn- th-invoke-src [_] {:loaded true})
+
+;;; Tests — fn->keyword
 
 (tests
- "simple transition, target only shorthand"
- (test-machine
-  {:a {:E1 :b}}
-  {:states {:a {:on {:E1 :b}} :b {}}})
- := :ok
+ "a named fn: its name, kebab-cased"
+ (fn->keyword th-named-action :E1) := :th-named-action
 
- "simple transition with map target only"
- (test-machine
-  {:a {:E1 {:target :b}}}
-  {:states {:a {:on {:E1 {:target :b}}} :b {}}})
- := :ok
+ "a var: the name in its metadata"
+ (fn->keyword #'th-named-action :E1) := :th-named-action
 
- "named action trace"
- (test-machine
-  {:a {:E1 {:target :b :trace [:th-named-action]}}}
-  {:states {:a {:on {:E1 {:actions th-named-action :target :b}}} :b {}}})
- := :ok
+ "an anonymous fn: :on-<event>"
+ (fn->keyword (fn [ctx _] ctx) :E1) := :on-E1
 
- "anonymous action falls back to :on-E1"
- (test-machine
-  {:a {:E1 {:target :b :trace [:on-E1]}}}
-  {:states {:a {:on {:E1 {:actions (fn [ctx _] ctx) :target :b}}} :b {}}})
- := :ok
+ "no fn: nil"
+ (fn->keyword nil :E1) := nil)
 
- "hierarchical state path"
- (test-machine
-  {[:c :c1] {:EC1 {:target [:c :c2]}}}
-  {:states {:c {:states {:c1 {:on {:EC1 {:target :c2}}}
-                         :c2 {}}}}})
- := :ok
+;;; Tests — normalize-expected
 
- "invoke success: trace invoke id then on-done action"
- (test-machine
-  {:a {:START {:target :su :trace [:load-invoke :th-on-done-act]}}}
-  {:states {:a {:on {:START {:target :b}}}
-            :b {:invoke {:id :load-invoke
-                         :src (fn [_] {:ok true})
-                         :on-done {:target :su :actions th-on-done-act}}}
-            :su {}}}
-  {:invoke-returns {:load-invoke {:ok true}}})
- := :ok
+(tests
+ "a keyword is shorthand for {:target k}"
+ (normalize-expected :b) := {:target :b}
 
- "invoke error path"
- (test-machine
-  {:a {:START {:target :er :trace [:fail-invoke :th-on-err-act]}}}
-  {:states {:a {:on {:START {:target :b}}}
-            :b {:invoke {:id :fail-invoke
-                         :src (fn [_] (throw (ex-info "x" {})))
-                         :on-error {:target :er :actions th-on-err-act}}}
-            :er {}}}
-  {:invoke-returns {:fail-invoke (ex-info "fail" {:reason :test})}})
- := :ok
+ "a vector is shorthand for {:target path}"
+ (normalize-expected [:c :c2]) := {:target [:c :c2]}
 
- "chained invokes"
- (test-machine
-  {:a {:START {:target :done
-               :trace [:inv-a :th-act-a :inv-b :th-act-b]}}}
-  {:states {:a {:on {:START {:target :b}}}
-            :b {:invoke {:id :inv-a
-                         :src (fn [_] {:v 1})
-                         :on-done {:target :c :actions th-act-a}}}
-            :c {:invoke {:id :inv-b
-                         :src (fn [_] {:v 2})
-                         :on-done {:target :done :actions th-act-b}}}
-            :done {}}}
-  {:invoke-returns {:inv-a {:v 1} :inv-b {:v 2}}})
- := :ok
+ "a map is taken as it is"
+ (normalize-expected {:target :b :trace [:x]}) := {:target :b :trace [:x]}
 
- "conditional event branch via :ctx and :event-params"
- (test-machine
-  {:a {:PICK {:target :left :ctx {:side :left} :event-params {}}}}
-  {:states {:a {:on {:PICK [{:target :left :cond (fn [ctx _] (= :left (:side ctx)))}
-                            {:target :right}]}}
-            :left {} :right {}}})
- := :ok
+ "anything else throws"
+ (normalize-expected "b") :throws #?(:clj ExceptionInfo :cljs ExceptionInfo))
 
- "terminal state documented as empty map is no-op"
- (test-machine {:z {} :a {:E1 :b}}
-               {:states {:a {:on {:E1 :b}} :b {} :z {}}})
- := :ok
+;;; Tests — resolve-invoke-mock: the value a traced invoke returns.
 
- "failure: wrong target"
- (test-machine
-  {:a {:E1 :c}}
-  {:states {:a {:on {:E1 :b}} :b {} :c {}}})
- := [{:from :a :event :E1 :expected-target :c :actual-target :b}]
+(tests
+ "an id listed in :invoke-returns: its value"
+ (resolve-invoke-mock :load {:invoke-returns {:load {:ok true}}}) := {:ok true}
 
- "failure: wrong trace"
- (test-machine
-  {:a {:E1 {:target :b :trace [:wrong]}}}
-  {:states {:a {:on {:E1 {:actions th-named-action :target :b}}} :b {}}})
- := [{:from :a
-      :event :E1
-      :expected-target :b
-      :actual-target :b
-      :expected-trace [:wrong]
-      :actual-trace [:th-named-action]}])
+ "an id not listed: {}"
+ (resolve-invoke-mock :other {:invoke-returns {:load {:ok true}}}) := {}
+
+ "no :invoke-returns at all: {}"
+ (resolve-invoke-mock :load {}) := {}
+
+ "an ex-info listed: it is thrown, so the machine takes :on-error"
+ (resolve-invoke-mock :load {:invoke-returns {:load (ex-info "fail" {:reason :test})}})
+ :throws #?(:clj ExceptionInfo :cljs ExceptionInfo))
+
+;;; Tests — run-single-transition. The machine is not run: sm/transition is a
+;;; spy (transition's semantics are tested in hierarchical-state-machine), and
+;;; so are fn->keyword and resolve-invoke-mock (tested above).
+
+(tests
+ (defn- without-trace-fns
+   "A call to sm/transition, its opts without the trace fns (closures)."
+   [[machine from-state event opts]]
+   [machine from-state event (dissoc opts :action-trace-fn :trace-fn)])
+
+ "a target-only expectation that holds: sm/transition gets the machine, the
+  from-state under :_state, the event with {} params, and the tracing opts"
+ (with-redefs [sm/transition (spy/stub {:_state :b})]
+   (run-single-transition {:id :any} :a :E1 :b {})
+   := {:from :a :event :E1 :expected-target :b :actual-target :b :pass? true}
+   (spy/called-once? sm/transition) := true
+   (-> sm/transition
+       spy/first-call
+       without-trace-fns)
+   := [{:id :any} {:_state :a} [:E1 {}] {:state-key :_state}])
+
+ "a hierarchical from-state path goes in as it is; a {:target} map is an
+  expectation too"
+ (with-redefs [sm/transition (spy/stub {:_state [:c :c2]})]
+   (run-single-transition {:id :any} [:c :c1] :EC1 {:target [:c :c2]} {})
+   := {:from [:c :c1] :event :EC1 :expected-target [:c :c2] :actual-target [:c :c2] :pass? true}
+   (-> sm/transition
+       spy/first-call
+       without-trace-fns)
+   := [{:id :any} {:_state [:c :c1]} [:EC1 {}] {:state-key :_state}])
+
+ "a wrong target: not :pass?"
+ (with-redefs [sm/transition (spy/stub {:_state :b})]
+   (run-single-transition {:id :any} :a :E1 :c {})
+   := {:from :a :event :E1 :expected-target :c :actual-target :b :pass? false})
+
+ "the :state-key opt: the from-state and the actual target live under it"
+ (with-redefs [sm/transition (spy/stub {:aa :b})]
+   (run-single-transition {:id :any} :a :E1 :b {:state-key :aa})
+   := {:from :a :event :E1 :expected-target :b :actual-target :b :pass? true}
+   (-> sm/transition
+       spy/first-call
+       without-trace-fns)
+   := [{:id :any} {:aa :a} [:E1 {}] {:state-key :aa}])
+
+ "the opts' :ctx and the expectation's :ctx are merged into the from-state
+  (the expectation's wins); the expectation's :event-params go with the event"
+ (with-redefs [sm/transition (spy/stub {:_state :left})]
+   (run-single-transition {:id :any}
+                          :a
+                          :PICK
+                          {:target :left :ctx {:side :left} :event-params {:x 1}}
+                          {:ctx {:side :right :user "u1"}})
+   := {:from :a :event :PICK :expected-target :left :actual-target :left :pass? true}
+   (-> sm/transition
+       spy/first-call
+       without-trace-fns)
+   := [{:id :any} {:side :left :user "u1" :_state :a} [:PICK {:x 1}] {:state-key :_state}]))
+
+(tests
+ (defn- machine-tracing
+   "A stand-in for sm/transition, for a machine whose event runs an action
+    then enters a state with an invoke: it calls the opts' trace fns as
+    transition would, lands in :b, and returns what they gave back."
+   [_machine _from-state [event-name params] {:keys [state-key action-trace-fn trace-fn]}]
+   (let [action-gave (action-trace-fn event-name th-named-action {:c 1} params)
+         invoke-gave (trace-fn :load-invoke th-invoke-src {:c 1})]
+     {state-key    :b
+      :action-gave action-gave
+      :invoke-gave invoke-gave}))
+
+ "tracing: an action is not run but labelled (by fn->keyword) into the trace,
+  the ctx going back unchanged; an invoke's :src is not run but traced by its
+  id and answered by resolve-invoke-mock; target and trace hold: :pass?"
+ (with-redefs [sm/transition       (spy/spy machine-tracing)
+               fn->keyword         (spy/stub :th-named-action)
+               resolve-invoke-mock (spy/stub {:loaded true})]
+   (run-single-transition {:id :any}
+                          :a
+                          :E1
+                          {:target :b :trace [:th-named-action :load-invoke]}
+                          {:invoke-returns {:load-invoke {:loaded true}}})
+   := {:from            :a
+       :event           :E1
+       :expected-target :b
+       :actual-target   :b
+       :expected-trace  [:th-named-action :load-invoke]
+       :actual-trace    [:th-named-action :load-invoke]
+       :pass?           true}
+   (spy/first-response sm/transition) := {:_state :b :action-gave {:c 1} :invoke-gave {:loaded true}}
+   (spy/called-once-with? fn->keyword th-named-action :E1) := true
+   (spy/called-once-with? resolve-invoke-mock :load-invoke {:invoke-returns {:load-invoke {:loaded true}}}) := true)
+
+ "a wrong trace: not :pass?, even though the target holds"
+ (with-redefs [sm/transition       (spy/spy machine-tracing)
+               fn->keyword         (spy/stub :th-named-action)
+               resolve-invoke-mock (spy/stub {})]
+   (run-single-transition {:id :any} :a :E1 {:target :b :trace [:wrong]} {})
+   := {:from            :a
+       :event           :E1
+       :expected-target :b
+       :actual-target   :b
+       :expected-trace  [:wrong]
+       :actual-trace    [:th-named-action :load-invoke]
+       :pass?           false}))
+
+;;; Tests — test-machine. Each (from, event) pair is run-single-transition's
+;;; (tested above), so here it is a spy.
+
+(tests
+ "all pass: :ok; run-single-transition runs each (from, event) pair, in order,
+  with the opts (default {})"
+ (with-redefs [run-single-transition (spy/stub {:pass? true})]
+   (test-machine {:a      {:E1 :b
+                           :E2 {:target :c :trace [:x]}}
+                  [:c :c1] {:EC1 [:c :c2]}}
+                 {:id :some})
+   := :ok
+   (spy/calls run-single-transition)
+   := [[{:id :some} :a :E1 :b {}]
+       [{:id :some} :a :E2 {:target :c :trace [:x]} {}]
+       [{:id :some} [:c :c1] :EC1 [:c :c2] {}]])
+
+ "the opts given go to every run"
+ (with-redefs [run-single-transition (spy/stub {:pass? true})]
+   (test-machine {:a {:E1 :b}} {:id :some} {:state-key :aa :invoke-returns {:i {}}})
+   := :ok
+   (spy/called-once-with? run-single-transition {:id :some} :a :E1 :b {:state-key :aa :invoke-returns {:i {}}})
+   := true)
+
+ "a from-state with no events (a terminal state, documented) runs nothing"
+ (with-redefs [run-single-transition (spy/stub {:pass? true})]
+   (test-machine {:z {}} {:id :some})
+   := :ok
+   (spy/not-called? run-single-transition) := true)
+
+ "failures: a vector of the runs that did not pass, without :pass?"
+ (with-redefs [run-single-transition (spy/spy
+                                      (fn [_machine from event _expected _opts]
+                                        (if (= event :E2)
+                                          {:from from :event event :expected-target :c :actual-target :b :pass? false}
+                                          {:from from :event event :expected-target :b :actual-target :b :pass? true})))]
+   (test-machine {:a {:E1 :b :E2 :c}} {:id :some})
+   := [{:from :a :event :E2 :expected-target :c :actual-target :b}]))

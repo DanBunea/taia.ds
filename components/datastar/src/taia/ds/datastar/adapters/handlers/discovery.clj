@@ -185,6 +185,14 @@
                             :component-ns component-ns
                             :searched-paths searched-paths}))))))))
 
+(defn resolve-component
+  "The component's machine and render fn, as vars (dereferenced on every event,
+   so REPL redefs are picked up): {:machine-var :component-fn-var}. Throws like
+   `discover-component` when the component cannot be found."
+  [component-name controller-name]
+  (let [{:keys [machine component-fn]} (discover-component component-name controller-name)]
+    {:machine-var machine :component-fn-var component-fn}))
+
 (defn warm-cache!
   "Eagerly resolves `component-names` into the discovery cache so the first HTTP
    request for a component does not pay the namespace-load cost on the request

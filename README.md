@@ -10,18 +10,84 @@ Server-side UI components over [Datastar](https://data-star.dev/) SSE, LiveView-
 A component is a pure render function `(fn [ctx] -> hiccup)` plus an XState-style hierarchical state machine; the
 browser round-trips the component's signals (`:memory`, `:state`) as JSON, the server runs the
 transition and streams back patches. Long-lived components keep an SSE connection open so the server
-can push UI with `send-ui!`.
+can push UI with `send-ui!`, or send the component events with `send-event!`.
 
 Extracted from a production Clojure application, where it drives the whole product UI.
 
-One click on the counter example, end to end — the signal store travels with the POST, the
-controller's action produces the new ctx, the render fn turns it into hiccup, and Datastar morphs
-the HTML back in:
+A component is a `core.async.flow` of two procs between an `in-chan` and an `out-chan`: the
+**controller** runs the component's state machine, the **view** is its render fn. A click puts the
+event, and the component's signals, on the in-chan; the render leaves on the out-chan and Datastar
+morphs it into the page. A connected component's flow stays up as long as its SSE stream, so the
+server can send it events too (`send-event!`):
 
-![One event, end to end: click, POST with the signal store, ctx, state-machine action, render, HTML, morph](docs/img/counter-flow.gif)
+![A component is a flow: a click's event travels in-chan → controller → view → out-chan back into the page; a connected component's flow also takes server events](docs/img/component-flow.gif)
 
-(The source is [`docs/img/counter-flow.svg`](docs/img/counter-flow.svg), an animated SVG; `bb flow-gif`
-re-renders the GIF from it.)
+A connected component's flow has two ways in, through the same in-chan. On the live counter, a
+click POSTs +1 and gets the render back; the REPL's `(inc!)`, which is
+`(ds/send-event! "live1" "demo-user" "increment" {})`, sends the same event, the same controller
+code runs, and the new value goes down the page's open SSE stream, with no click and no request:
+
+![The live counter: a click and the REPL's (inc!) both send :INCREMENT through the same in-chan; the same controller and view run; the count goes 1, 2, 3 and the last render arrives over the open SSE stream](docs/img/repl-event-flow.gif)
+
+(Both are generated: [`scripts/component_flow_svg.clj`](scripts/component_flow_svg.clj) writes the
+animated SVGs in [`docs/img/`](docs/img/), and `bb component-flow-gif` renders the GIFs. The click in
+more detail, signal store and morph included, is in [example 1](docs/examples/01-counter.md).)
+
+## What you write
+
+Two namespaces per component: a **controller** (the state machine) and a **view** (the render fn).
+Here is the whole counter, lightly trimmed (the example's files add test ids, docstrings and a state
+viewer):
+
+```clojure
+(ns my.app.components.basics.counter-controller)
+
+(defn seed      [ctx _] (update-in ctx [:memory :count] #(or % 0)))
+(defn increment [ctx _] (update-in ctx [:memory :count] inc))
+(defn decrement [ctx _] (update-in ctx [:memory :count] dec))
+(defn reset     [ctx _] (assoc-in ctx [:memory :count] 0))
+
+(def machine
+  {:id      :counter
+   :initial :displayed
+   :states  {:displayed {:on {:INIT      {:actions seed}
+                              :INCREMENT {:actions increment}
+                              :DECREMENT {:actions decrement}
+                              :RESET     {:actions reset}}}}})
+```
+
+```clojure
+(ns my.app.components.basics.counter
+  (:require [taia.ds.datastar.interface :as ds]))
+
+(defn- post [cid event]
+  (str "@post('/ds/nds/basics.counter/" cid "/" event "')"))
+
+(defn counter [{:keys [component-id memory] :as ctx}]
+  [:div.card {:id component-id :data-signals (ds/ctx->data-signals ctx)}
+   [:h2 "Counter"]
+   [:p.big (str (:count memory 0))]
+   [:div.row
+    [:button {"data-on:click" (post component-id "decrement")} "−"]
+    [:button {"data-on:click" (post component-id "increment")} "+"]
+    [:button {"data-on:click" (post component-id "reset")} "Reset"]]])
+```
+
+Plain functions and data: no handlers, no channels, no SSE, no registration. taia.ds does the rest:
+
+- **Routing.** `POST /ds/nds/basics.counter/counter1/increment` reaches your machine as
+  `[:INCREMENT params]`. You mount three handlers once for the whole app, not per component.
+- **Discovery.** It finds `counter` and `counter-controller` from the namespace name.
+- **Signals.** `:memory` and `:state` round-trip through `data-signals` and come back as the ctx of
+  the next event. A key your action removes is deleted in the browser too.
+- **The flow.** Your controller and view run as the two procs of a `core.async.flow`, built per
+  event. For a connected component it lives as long as its SSE stream. Nothing is kept between
+  events: each starts from the tab's signals, or from a server event's params.
+- **Connected components.** Streams per user, heartbeats, reconnects, and `send-event!` /
+  `send-ui!` for pushes from the server.
+- **The response.** Hiccup becomes HTML and Datastar morphs it in by id; an effects list goes out
+  as SSE.
+- **Observability.** Traces through mulog, plus an observer hook for your metrics.
 
 ## If you know re-frame
 
@@ -93,7 +159,7 @@ are no-ops unless you call `(hyperfiddle.rcf/enable!)`.
 
 - [Getting started](docs/getting-started.md) · [Components](docs/components.md) · [State machines](docs/state-machines.md) · [Connected components and push](docs/connected-components.md)
 - [Testing components](docs/testing.md) · [Gotchas](docs/gotchas.md) (read this one) · [Migration](docs/migration.md) · [API index](docs/api.md)
-- [Examples](docs/examples/README.md): six components in `bases/examples`, one concept each, each with a walkthrough and an executable spec. `bb dev` serves them and prints the URL (the page is itself a component).
+- [Examples](docs/examples/README.md): seven components in `bases/examples`, one concept each, each with a walkthrough and an executable spec. `bb dev` serves them and prints the URL (the page is itself a component).
 
 The same articles render on cljdoc once the jar is on Clojars (`doc/cljdoc.edn`).
 
@@ -107,7 +173,7 @@ The same articles render on cljdoc once the jar is on Clojars (`doc/cljdoc.edn`)
 
 ## Wiring it into an application
 
-The library ships no routes: your base owns them. Mount the two handlers on these three shapes
+The library ships no routes: your base owns them. Mount the three handlers on these three shapes
 (reitit shown; any router that sets `:path-params` works):
 
 ```clojure
@@ -118,7 +184,8 @@ The library ships no routes: your base owns them. Mount the two handlers on thes
   ["/:component/:component-id/:controller/:event" {:handler ds/handler-component-event}]
   ["/:component/:component-id/:event"             {:handler ds/handler-component-event}]]
  ["/nds-connect"
-  ["/:component/:component-id/:event"             {:handler ds/handler-connected-component-connect}]]]
+  ["/:component/:component-id/:event"             {:get  {:handler ds/handler-connected-component-connect}
+                                                   :post {:handler ds/handler-connected-component-event}}]]]
 ```
 
 The handlers expect, on the request:
@@ -172,15 +239,14 @@ my/app/components/counter/counter_controller.clj  ; (ns my.app.components.counte
 ```
 
 - `counter.clj` defines `(defn counter [ctx] ...)` — the render fn is **named after the last
-  namespace segment** and returns hiccup. Use
-  `taia.ds.datastar.adapters.handlers.context/ctx->data-signals` for the `data-signals` attribute.
+  namespace segment** and returns hiccup. Use `ds/ctx->data-signals` for the `data-signals`
+  attribute.
 - `counter_controller.clj` defines `machine`, a hierarchical state machine map
   (`:id`, `:initial`, `:states`, `:on`); actions are `(fn [ctx params] -> ctx)`.
 - Events arrive as `POST /ds/nds/counter.counter/<id>/<EVENT>`; `:memory` is your persistent state,
   `:state` the FSM state keyword.
 
-The [examples](docs/examples/README.md) go from a counter to TodoMVC; the brick's own
-`adapters/components/counter/` holds the minimal fixtures its tests use.
+The [examples](docs/examples/README.md) go from a counter to TodoMVC.
 
 Effect vocabulary a render fn may return instead of plain hiccup: `[[:patch hiccup opts] …]`,
 `[:patch-signals map opts]`, `[:execute-script js opts]`; `opts` keys/values may be `:d*/…` keywords

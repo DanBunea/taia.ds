@@ -1,6 +1,6 @@
 # Examples
 
-Six components, one concept each, in `bases/examples/src/taia/ds/examples/components/`. Run them:
+Seven components, one concept each, in `bases/examples/src/taia/ds/examples/components/`. Run them:
 
 ```shell
 bb dev          # prints the examples URL
@@ -33,6 +33,7 @@ and an executable spec in
 | [4 · Wizard](04-wizard.md) | hierarchical states, relative targets, machine-wide RESET, `:invoke` with on-done / on-error | `wizard.wizard` |
 | [5 · TodoMVC](05-todomvc.md) | query-string params, filters, inline editing, keyboard expressions | `todomvc.todomvc` |
 | [6 · Weather](06-weather.md) | an invoke calling a public API, lazy-load skeleton, `data-indicator`, the error path | `weather.weather` |
+| [7 · Countdown](07-countdown.md) | a connected component's flow holds the state; the server drives it with `send-event!` | `live.countdown` |
 
 The application around them — the `/ds` routes, middleware, the server — is
 [`core.clj`](../../bases/examples/src/taia/ds/examples/core.clj); the page that mounts them is the

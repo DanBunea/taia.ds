@@ -28,7 +28,10 @@
     :doc "05-todomvc.md"}
    {:example "weather" :title "6 · Weather" :component "weather.weather" :cid "weather1"
     :summary "An invoke calling a public API (Open-Meteo), a lazy-loading skeleton, `data-indicator` while a request is in flight, the error path."
-    :doc "06-weather.md"}])
+    :doc "06-weather.md"}
+   {:example "countdown" :title "7 · Countdown" :component "live.countdown" :cid "countdown1" :connected? true
+    :summary "A connected component's flow holds its state; the server drives it with `send-event!`, and clicks POST through the same flow."
+    :doc "07-countdown.md"}])
 
 (defn find-example [name]
   (first (filter #(= name (:example %)) examples)))

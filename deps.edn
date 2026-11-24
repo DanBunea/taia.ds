@@ -32,6 +32,15 @@
                       org.jsoup/jsoup     {:mvn/version "1.9.2"}}
          :main-opts ["-m" "kaocha.runner"]}
 
+  ;; bb coverage: the unit tests under Cloverage, report in target/coverage
+  :coverage {:jvm-opts ["-Dhyperfiddle.rcf.generate-tests=true"]
+             :extra-paths ["bases/examples/test" "components/datastar/test"]
+             :extra-deps {lambdaisland/kaocha            {:mvn/version "1.91.1392"}
+                          lambdaisland/kaocha-cloverage  {:mvn/version "1.1.89"}
+                          hickory/hickory                {:mvn/version "0.7.1"}
+                          org.jsoup/jsoup                {:mvn/version "1.9.2"}}
+             :main-opts ["-m" "kaocha.runner" "--config-file" "coverage-tests.edn"]}
+
   :poly {:extra-deps {polylith/clj-poly {:mvn/version "0.3.33"}}
          :main-opts ["-m" "polylith.clj.core.poly-cli.core"]}
 

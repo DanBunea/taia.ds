@@ -2,7 +2,8 @@
   "The examples application — and the reference for what an application base
    must do to host taia.ds components:
 
-   1. mount the two handlers on the three route shapes under /ds;
+   1. mount the three handlers on the three route shapes under /ds (the
+      nds-connect shape takes GET to open a stream, POST for an event);
    2. parse params and JSON bodies (muuntaja) so the pipeline sees
       `:body-params` / `:params`;
    3. put a `:logged-user` with a `:user/id` on `:params` — SSE connections are
@@ -56,9 +57,12 @@
        {:parameters {:path path-params}
         :handler    ds/handler-component-event}]]
      ["/nds-connect"
+      ;; GET opens the stream (and the component's flow); POST sends an event
+      ;; through that same flow
       ["/:component/:component-id/:event"
        {:parameters {:path path-params}
-        :handler    ds/handler-connected-component-connect}]]]]
+        :get        {:handler ds/handler-connected-component-connect}
+        :post       {:handler ds/handler-connected-component-event}}]]]]
    {:data {:muuntaja   m/instance
            :coercion   malli/coercion
            :middleware [rrmm/format-middleware

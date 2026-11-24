@@ -111,3 +111,18 @@ that reason. Keep it that way if you touch it.
 
 Jetty 12's GzipHandler excludes `text/event-stream` by default (not a suspect). Proxies may buffer
 SSE; the connect handler sends `X-Accel-Buffering: no`, which nginx and Traefik honour.
+
+## A server event starts from the machine's initial state
+
+Nothing is kept between events, so a `send-event!` (no request, no signals) starts from the
+machine's `:initial` state with an empty `:memory`. An event that can arrive in any state is
+handled on the machine's own `:on`, and whatever its action needs travels as the event's params
+(`{:remaining 4}`), not in a ctx left behind by an earlier event: there is none.
+
+## Every one-shot event builds a flow
+
+`/ds/nds/…` runs its event through a per-request `core.async.flow`, built and stopped per event.
+Measured on the counter example: about 200 µs per event against 100 µs for the plain function
+pipeline it replaced (p50 163 µs against 77 µs). There is no thread or heap growth, because the
+proc loops run on virtual threads. Negligible next to a network round trip, but it is there.
+`core.async.flow` is still alpha (`1.9.808-alpha1`).

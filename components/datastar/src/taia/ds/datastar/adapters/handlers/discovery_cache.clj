@@ -61,6 +61,58 @@
   []
   (set (keys @!cache)))
 
+;;; Tests — the accessors. Each case starts from its own cache
+;;; (`(with-redefs [!cache (atom …)] …)`), never the global one.
+
+(tests
+ "cached: the resolution under k"
+ (with-redefs [!cache (atom {["a.b" nil] {:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"}})]
+   (cached ["a.b" nil]) := {:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"})
+
+ "cached: absent → nil (a normal outcome); the controller-name is part of the key"
+ (with-redefs [!cache (atom {["a.b" nil] {:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"}})]
+   (cached ["a.b" "other-controller"]) := nil)
+
+ "store!: stores v under k and returns it — two controllers for the same
+  component do not collide"
+ (with-redefs [!cache (atom {["a.b" nil] {:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"}})]
+   (store! ["a.b" "other-controller"] {:controller-ns 'c.d-controller :component-ns 'c.d :fn-name "d"}) := {:controller-ns 'c.d-controller :component-ns 'c.d :fn-name "d"}
+   @!cache := {["a.b" nil]              {:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"}
+               ["a.b" "other-controller"] {:controller-ns 'c.d-controller :component-ns 'c.d :fn-name "d"}})
+
+ "store!: overwrites the entry under k"
+ (with-redefs [!cache (atom {["a.b" nil] {:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"}})]
+   (store! ["a.b" nil] {:controller-ns 'c.d-controller :component-ns 'c.d :fn-name "d"}) := {:controller-ns 'c.d-controller :component-ns 'c.d :fn-name "d"}
+   @!cache := {["a.b" nil] {:controller-ns 'c.d-controller :component-ns 'c.d :fn-name "d"}})
+
+ "evict!: removes one entry, returns nil"
+ (with-redefs [!cache (atom {["a.b" nil] {:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"}
+                             ["c.d" nil] {:controller-ns 'c.d-controller :component-ns 'c.d :fn-name "d"}})]
+   (evict! ["a.b" nil]) := nil
+   @!cache := {["c.d" nil] {:controller-ns 'c.d-controller :component-ns 'c.d :fn-name "d"}})
+
+ "evict!: an absent key is a no-op (idempotent)"
+ (with-redefs [!cache (atom {["a.b" nil] {:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"}})]
+   (evict! ["c.d" nil]) := nil
+   @!cache := {["a.b" nil] {:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"}})
+
+ "clear!: removes every entry, returns nil"
+ (with-redefs [!cache (atom {["a.b" nil] {:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"}
+                             ["c.d" nil] {:controller-ns 'c.d-controller :component-ns 'c.d :fn-name "d"}})]
+   (clear!) := nil
+   @!cache := {})
+
+ "cached-count / cached-keys: how many, and which keys"
+ (with-redefs [!cache (atom {["a.b" nil] {:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"}
+                             ["c.d" nil] {:controller-ns 'c.d-controller :component-ns 'c.d :fn-name "d"}})]
+   (cached-count) := 2
+   (cached-keys) := #{["a.b" nil] ["c.d" nil]})
+
+ "cached-count / cached-keys: an empty cache"
+ (with-redefs [!cache (atom {})]
+   (cached-count) := 0
+   (cached-keys) := #{}))
+
 (defn get-or-resolve!
   "Cache-aside. Returns the cached resolution for `k`, else calls `resolve-fn`
    (0-arity) and returns its result, storing it when `cacheable?` says so
@@ -83,53 +135,74 @@
                  (store! k v)
                  v)))))))
 
+;;; Tests — get-or-resolve!: cached and store! are spies (tested above).
+
 (tests
- "get-or-resolve!: a miss calls resolve-fn and stores; the next call is a hit
-  that does NOT call resolve-fn again"
- (clear!)
- (let [resolve-fn (spy/spy (fn [] {:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"}))
-       first-call (get-or-resolve! ["a.b" nil] resolve-fn)
-       second-call (get-or-resolve! ["a.b" nil] resolve-fn)]
-   [first-call
-    (= first-call second-call)
-    (spy/call-count resolve-fn)
-    (cached-count)])
- := [{:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"} true 1 1]
+ "get-or-resolve!: a hit returns the cached resolution — resolve-fn is not
+  called, nothing is stored, no lock is taken (one lookup)"
+ (with-redefs [cached (spy/spy (constantly {:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"}))
+               store! (spy/spy)]
+   (let [resolve-fn (spy/spy)]
+     (get-or-resolve! ["a.b" nil] resolve-fn) := {:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"}
+     (spy/called-once-with? cached ["a.b" nil]) := true
+     (spy/not-called? resolve-fn) := true
+     (spy/not-called? store!) := true))
 
- "get-or-resolve!: the controller-name is part of the key — two controllers for
-  the same component do not collide"
- (clear!)
- (do (get-or-resolve! ["a.b" nil] (fn [] {:component-ns 'a.b}))
-     (get-or-resolve! ["a.b" "other-controller"] (fn [] {:component-ns 'a.b}))
-     (cached-keys))
- := #{["a.b" nil] ["a.b" "other-controller"]}
+ "get-or-resolve!: a miss looks again inside the lock, calls resolve-fn and
+  stores its result, which it returns"
+ (with-redefs [cached (spy/spy (constantly nil))
+               store! (spy/spy (fn [_ v] v))]
+   (let [resolve-fn (spy/spy (constantly {:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"}))]
+     (get-or-resolve! ["a.b" nil] resolve-fn) := {:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"}
+     (spy/calls cached) := [[["a.b" nil]] [["a.b" nil]]]
+     (spy/called-once? resolve-fn) := true
+     (spy/called-once-with? store! ["a.b" nil] {:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"}) := true))
 
- "get-or-resolve!: an incomplete resolution is returned but NOT stored, so the
-  next call resolves again"
- (clear!)
- (let [resolve-fn (spy/spy (fn [] {:controller-ns nil :component-ns 'a.b}))
-       complete? (fn [{:keys [controller-ns component-ns]}] (and controller-ns component-ns))
-       out (get-or-resolve! ["a.b" nil] resolve-fn complete?)]
-   (get-or-resolve! ["a.b" nil] resolve-fn complete?)
-   [out (cached-count) (spy/call-count resolve-fn)])
- := [{:controller-ns nil :component-ns 'a.b} 0 2]
+ "get-or-resolve!: a resolution cacheable? rejects is returned but NOT stored"
+ (with-redefs [cached (spy/spy (constantly nil))
+               store! (spy/spy)]
+   (get-or-resolve! ["a.b" nil]
+                    (constantly {:controller-ns nil :component-ns 'a.b})
+                    (fn [{:keys [controller-ns component-ns]}] (and controller-ns component-ns)))
+   := {:controller-ns nil :component-ns 'a.b}
+   (spy/not-called? store!) := true)
 
  "get-or-resolve!: a nil resolution is not stored"
- (clear!)
- [(get-or-resolve! ["missing" nil] (constantly nil)) (cached-count)] := [nil 0]
+ (with-redefs [cached (spy/spy (constantly nil))
+               store! (spy/spy)]
+   (get-or-resolve! ["missing" nil] (constantly nil)) := nil
+   (spy/not-called? store!) := true)
 
- "get-or-resolve!: a throwing resolve-fn caches nothing and rethrows"
- (clear!)
- (try
+ "get-or-resolve!: a throwing resolve-fn stores nothing and rethrows"
+ (with-redefs [cached (spy/spy (constantly nil))
+               store! (spy/spy)]
    (get-or-resolve! ["boom" nil] (fn [] (throw (ex-info "nope" {}))))
-   :no-throw
-   (catch clojure.lang.ExceptionInfo _ (cached-count)))
- := 0
+   :throws clojure.lang.ExceptionInfo
+   (spy/not-called? store!) := true)
 
- "evict! removes one entry, clear! removes them all"
- (clear!)
- (do (store! ["a.b" nil] {:component-ns 'a.b})
-     (store! ["c.d" nil] {:component-ns 'c.d})
-     (evict! ["a.b" nil])
-     [(cached ["a.b" nil]) (cached-count) (do (clear!) (cached-count))])
- := [nil 1 0])
+ ;; End-to-end with a real (fresh) cache: the cache-aside round trip discovery
+ ;; relies on — the point of these two is the SECOND call.
+
+ "round trip: a miss stores, so the next call is a hit that does NOT call
+  resolve-fn again"
+ (with-redefs [!cache (atom {})]
+   (let [resolve-fn (spy/spy (constantly {:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"}))]
+     (get-or-resolve! ["a.b" nil] resolve-fn) := {:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"}
+     (get-or-resolve! ["a.b" nil] resolve-fn) := {:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"}
+     (spy/call-count resolve-fn) := 1
+     @!cache := {["a.b" nil] {:controller-ns 'a.b-controller :component-ns 'a.b :fn-name "b"}}))
+
+ "round trip: an incomplete resolution is not stored, so the next call
+  resolves again"
+ (with-redefs [!cache (atom {})]
+   (let [resolve-fn (spy/spy (constantly {:controller-ns nil :component-ns 'a.b}))]
+     (get-or-resolve! ["a.b" nil]
+                      resolve-fn
+                      (fn [{:keys [controller-ns component-ns]}] (and controller-ns component-ns)))
+     := {:controller-ns nil :component-ns 'a.b}
+     (get-or-resolve! ["a.b" nil]
+                      resolve-fn
+                      (fn [{:keys [controller-ns component-ns]}] (and controller-ns component-ns)))
+     := {:controller-ns nil :component-ns 'a.b}
+     (spy/call-count resolve-fn) := 2
+     @!cache := {})))

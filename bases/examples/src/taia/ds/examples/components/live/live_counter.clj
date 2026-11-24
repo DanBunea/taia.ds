@@ -7,9 +7,11 @@
 
    The count is server-owned (an atom in the controller) and there is no
    `data-signals` here: nothing round-trips because nothing is the client's
-   to own. Each click is an ordinary one-shot POST whose action bumps the
-   atom and broadcasts the new render to every tab connected under this
-   component-id — open the page twice as `?user=alice` and `?user=bob`.
+   to own. Each click POSTs to the nds-connect path, so it runs through the
+   flow this tab's stream opened (the same in-chan the REPL's `inc!` uses);
+   its action bumps the atom and broadcasts the new render to every tab
+   connected under this component-id — open the page twice as `?user=alice`
+   and `?user=bob`.
 
    Keep the fragment user-neutral: the same markup lands in everyone's tab."
   (:require
@@ -17,9 +19,11 @@
    [clojure.string :as str]))
 
 (defn- post [cid event]
+  ;; The nds-connect path: a click runs through the flow this tab's stream
+  ;; opened, the same in-chan `send-event!` (and the REPL's `inc!`) uses.
   ;; `$user` is the page-level signal the home page seeds; every request carries it
   ;; as ?user= so the examples app can tell the tabs apart.
-  (str "@post('/ds/nds/live.live-counter/" cid "/" event "?user='+$user)"))
+  (str "@post('/ds/nds-connect/live.live-counter/" cid "/" event "?user='+$user)"))
 
 (defn live-counter [{:keys [component-id count] :as ctx}]
   [:div.card {:id component-id}

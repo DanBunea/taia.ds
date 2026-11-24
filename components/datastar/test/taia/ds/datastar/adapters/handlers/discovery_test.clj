@@ -32,111 +32,158 @@
 
 (def !search-paths @#'discovery/!component-search-paths)
 
+(defn- fixture-vars
+  "What discovery resolves the fixture to: its machine and render-fn vars."
+  []
+  {:machine      (ns-resolve controller-ns 'machine)
+   :component-fn (ns-resolve component-ns 'widget)})
+
+(defn- thrown
+  "The message and data of the ex-info `(f)` throws, else nil."
+  [f]
+  (try
+    (f)
+    nil
+    (catch clojure.lang.ExceptionInfo e
+      {:message (ex-message e) :data (ex-data e)})))
+
+(defn- render-widget
+  "Renders the fixture through discovery, the way an event does."
+  []
+  (-> "fixture.widget"
+      discover-component
+      :component-fn
+      deref
+      (apply [{}])))
+
+;;; discover-component: end to end against the in-memory fixture — resolving
+;;; namespaces by convention (and caching that scan) IS what it does.
+
 (tests
  (install-fixture!)
 
- "discovery via the first search path"
- (let [result (discover-component "fixture.widget")]
-   (var? (:machine result)) := true
-   (fn? (deref (:component-fn result))) := true)
+ "discover-component: found via the search path → the machine and render-fn vars"
+ (cache/clear!)
+ (discover-component "fixture.widget") := (fixture-vars)
 
- "discovery falls through to a later search path"
- (let [original @!search-paths]
-   (set-component-search-paths! ["taia.ds.nonexistent.components" prefix])
-   (let [result (discover-component "fixture.widget")]
-     (var? (:machine result)) := true
-     (fn? (deref (:component-fn result))) := true)
-   (set-component-search-paths! original))
+ "discover-component: falls through to a later search path"
+ (set-component-search-paths! ["taia.ds.nonexistent.components" "taia.ds.datastar.test-fixture"]) ; clears the cache too
+ (discover-component "fixture.widget") := (fixture-vars)
+ (install-fixture!)
 
- "the error names the searched paths when nothing matches"
- (try
-   (discover-component "nonexistent.component")
-   :no-throw
-   (catch clojure.lang.ExceptionInfo e
-     (let [msg (.getMessage e)
-           data (ex-data e)]
-       (clojure.string/includes? msg "Searched paths:") := true
-       (contains? data :searched-paths) := true)))
-
+ "discover-component: nothing matches → an ex-info naming the searched paths"
+ (cache/clear!)
+ (thrown #(discover-component "nonexistent.component"))
+ := {:message "Machine not found for component: nonexistent.component. Searched paths: taia.ds.datastar.test-fixture"
+     :data    {:ns-path "nonexistent.component" :controller-ns nil :searched-paths ["taia.ds.datastar.test-fixture"]}}
  (discover-component "nonexistent.component") :throws clojure.lang.ExceptionInfo)
 
 (tests
  (install-fixture!)
 
- "discover-component: the search-path scan is cached, and a second call does NOT
-  re-scan (the private finders are never touched again)"
+ "discover-component: a cache hit does NOT re-scan (the private finders are
+  never called)"
  (cache/clear!)
- (do (discover-component "fixture.widget")
-     (with-redefs-fn {#'discovery/find-component-ns (spy/spy @#'discovery/find-component-ns)
-                      #'discovery/find-controller-ns (spy/spy @#'discovery/find-controller-ns)}
-       (fn []
-         (let [result (discover-component "fixture.widget")]
-           [(var? (:machine result))
-            (fn? (deref (:component-fn result)))
-            (spy/call-count @#'discovery/find-component-ns)
-            (spy/call-count @#'discovery/find-controller-ns)
-            (cache/cached-count)]))))
- := [true true 0 0 1]
+ (discover-component "fixture.widget")                    ; the miss that caches it
+ (let [find-component-ns  (spy/spy)
+       find-controller-ns (spy/spy)]
+   (with-redefs [discovery/find-component-ns  find-component-ns
+                 discovery/find-controller-ns find-controller-ns]
+     (discover-component "fixture.widget") := (fixture-vars)
+     (spy/not-called? find-component-ns) := true
+     (spy/not-called? find-controller-ns) := true
+     (cache/cached-count) := 1))
 
- "discover-component: the cache key is [component controller], and a keyword
-  ns-path keys the same entry as the equivalent string"
+ "discover-component: a keyword ns-path keys the same entry as the
+  equivalent string"
  (cache/clear!)
- (do (discover-component :fixture.widget)
-     (discover-component "fixture.widget")
-     (cache/cached-keys))
- := #{["fixture.widget" nil]}
+ (discover-component :fixture.widget)
+ (discover-component "fixture.widget")
+ (cache/cached-keys) := #{["fixture.widget" nil]}
 
- "discover-component: vars are resolved fresh on every call, so a REPL redef of
-  the component fn is seen through a cache hit (and restored afterwards)"
+ "discover-component: the cache key is [component controller]"
  (cache/clear!)
- (let [component-fn-var (:component-fn (discover-component "fixture.widget"))
-       original @component-fn-var
-       during (with-redefs-fn {component-fn-var (fn [_ctx] [:div "redefined"])}
-                (fn [] (@(:component-fn (discover-component "fixture.widget")) {})))]
-   [during (identical? original @(:component-fn (discover-component "fixture.widget")))])
- := [[:div "redefined"] true]
+ (discover-component "fixture.widget" "widget-controller")
+ (cache/cached-keys) := #{["fixture.widget" "widget-controller"]}
+
+ "discover-component: vars are resolved fresh on every call, so a REPL redef
+  of the render fn is seen through a cache hit (and its restore too)"
+ (cache/clear!)
+ (with-redefs-fn {(-> "fixture.widget"
+                      discover-component
+                      :component-fn)
+                  (fn [_ctx] [:div "redefined"])}
+   render-widget)
+ := [:div "redefined"]
+ (render-widget) := [:div nil]
 
  "discover-component: a failed scan caches nothing, so a later fix is picked up"
  (cache/clear!)
- (do (try (discover-component "nonexistent.component") (catch clojure.lang.ExceptionInfo _ nil))
-     (cache/cached-count))
- := 0
-
- "set-component-search-paths! clears the cache — cached entries record which
-  search path won, and a new order can resolve the same name elsewhere"
- (let [original @!search-paths]
-   (discover-component "fixture.widget")
-   (let [before (cache/cached-count)]
-     (set-component-search-paths! original)
-     [(pos? before) (cache/cached-count)]))
- := [true 0])
+ (discover-component "nonexistent.component") :throws clojure.lang.ExceptionInfo
+ (cache/cached-count) := 0)
 
 (tests
  (install-fixture!)
 
- "warm-cache!: reports what it loaded and leaves those entries cached"
- (cache/clear!)
- (let [report (warm-cache! ["fixture.widget"])]
-   [(:warmed report) (:failed report) (number? (:elapsed-ms report)) (cache/cached-count)])
- := [1 [] true 1]
+ "set-component-search-paths!: sets the paths and clears the cache — cached
+  entries record which search path won, and a new order can resolve the same
+  name elsewhere"
+ (with-redefs [cache/clear! (spy/spy)]
+   (set-component-search-paths! ["taia.ds.other.components" "taia.ds.datastar.test-fixture"]) := nil
+   @!search-paths := ["taia.ds.other.components" "taia.ds.datastar.test-fixture"]
+   (spy/called-once? cache/clear!) := true)
+ (install-fixture!))
 
- "warm-cache!: a broken component lands in :failed instead of throwing, and the
-  rest of the list still warms"
- (cache/clear!)
- (let [report (warm-cache! ["nonexistent.component" "fixture.widget"])]
-   [(:warmed report)
-    (mapv :component (:failed report))
-    (string? (:error (first (:failed report))))
-    (cache/cached-count)])
- := [1 ["nonexistent.component"] true 1]
+;;; warm-cache!: discover-component is a spy (tested above).
 
- "warm-cache!: a [component controller] pair warms under the pair key"
- (cache/clear!)
- (do (warm-cache! [["fixture.widget" "widget-controller"]])
-     (cache/cached-keys))
- := #{["fixture.widget" "widget-controller"]}
+(tests
+ (install-fixture!)
+ (defn- report [warm-result] (dissoc warm-result :elapsed-ms))
+
+ "warm-cache!: discovers each component (default controller), and reports how
+  many warmed"
+ (with-redefs [discover-component (spy/spy)]
+   (-> ["fixture.widget"]
+       warm-cache!
+       report)
+   := {:warmed 1 :failed []}
+   (spy/called-once-with? discover-component "fixture.widget" nil) := true)
+
+ "warm-cache!: the report says how long it took, in ms"
+ (with-redefs [discover-component (spy/spy)]
+   (-> ["fixture.widget"]
+       warm-cache!
+       :elapsed-ms
+       nat-int?))
+ := true
+
+ "warm-cache!: a broken component lands in :failed instead of throwing, and
+  the rest of the list still warms"
+ (with-redefs [discover-component (spy/spy (fn [component _controller]
+                                             (when (= "nonexistent.component" component)
+                                               (throw (ex-info "Machine not found" {})))))]
+   (-> ["nonexistent.component" "fixture.widget"]
+       warm-cache!
+       report)
+   := {:warmed 1
+       :failed [{:component "nonexistent.component" :controller nil :error "Machine not found"}]}
+   (spy/calls discover-component) := [["nonexistent.component" nil] ["fixture.widget" nil]])
+
+ "warm-cache!: a [component controller] pair is discovered with that controller"
+ (with-redefs [discover-component (spy/spy)]
+   (warm-cache! [["fixture.widget" "widget-controller"]])
+   (spy/called-once-with? discover-component "fixture.widget" "widget-controller") := true)
 
  "warm-cache!: an empty list is a no-op"
+ (with-redefs [discover-component (spy/spy)]
+   (-> []
+       warm-cache!
+       report)
+   := {:warmed 0 :failed []}
+   (spy/not-called? discover-component) := true)
+
+ "end to end (the point of warm-cache!): the warmed components are left in
+  the discovery cache"
  (cache/clear!)
- (do (warm-cache! []) [(:warmed (warm-cache! [])) (cache/cached-count)])
- := [0 0])
+ (warm-cache! ["fixture.widget"])
+ (cache/cached-keys) := #{["fixture.widget" nil]})
