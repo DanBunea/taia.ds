@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — 2026-11-25
 
 ### Upgrading from 0.3.x
 
@@ -20,7 +20,7 @@
 
 ### Examples and template
 
-- The live counter's and the countdown's clicks are one-shot POSTs to `/ds/nds/…`; the examples app and the template mount nds-connect once, on any method. Both work on 0.3.2 as they are, so the template keeps its pin.
+- The live counter's and the countdown's clicks are one-shot POSTs to `/ds/nds/…`; the examples app and the template mount nds-connect once, on any method. The template pins 0.4.0.
 - The home page mounts a child in a wrapper (`#<cid>-mount`) around `#<cid>`, and a connected child's mount POSTs its INIT and carries `data-on:ds-reconnect`, so the reconnect watchdog re-opens a dropped connection. The marker cannot sit on `#<cid>` itself: the render's morph drops attributes it does not produce ([Gotchas](docs/gotchas.md)). The watchdog example in [Connected components](docs/connected-components.md#the-reconnect-watchdog) had that mistake; it now uses a wrapper.
 - README animation: the click on the live counter runs in a flow of its own; the REPL's `send-event!` goes through the connection's flow.
 

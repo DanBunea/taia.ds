@@ -21,7 +21,7 @@ application.
 ## 1. Add the dependency
 
 ```clojure
-io.github.danbunea/taia.ds {:mvn/version "0.3.2"}
+io.github.danbunea/taia.ds {:mvn/version "0.4.0"}
 ```
 
 The jar brings its own `datastar.js` (v1.0.0-RC.8) and `sse-reconnect.js` as classpath resources.

@@ -3,7 +3,7 @@
 Datastar + XState-style state machines + Clojure: an opinionated, component-based library for server-side UI.
 
 ```clojure
-io.github.danbunea/taia.ds {:mvn/version "0.3.2"}
+io.github.danbunea/taia.ds {:mvn/version "0.4.0"}
 ```
 
 Or start a new application from the [`taia/app` template](docs/new-project.md). It sets up a Polylith
