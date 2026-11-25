@@ -19,7 +19,6 @@
    [taia.ds.datastar.use-cases.process-event :as process-event]
    [taia.ds.datastar.use-cases.process-event.common :as common]
    [taia.ds.datastar.adapters.handlers.request :as request]
-   [taia.ds.datastar.adapters.handlers.default-component-handler :as default-handler]
    [taia.ds.datastar.adapters.handlers.discovery :as discovery]
    [taia.ds.datastar.adapters.handlers.observer :as observer]
    [taia.ds.datastar.adapters.handlers.response :refer [send-effect!]]
@@ -977,16 +976,6 @@
            (when (map? token)
              (observer/connection-closed! token))))}))))
 
-(defn handler-connected-component-event
-  "Deprecated: mount `handler-connected-component-connect` alone, on any
-   method. Kept so a 0.3 route map (`:get` connect, `:post` event) still
-   resolves: its async arity IS the connect handler, so a request here opens
-   a connection, whatever its method. The sync arity (no stream possible)
-   answers like the one-shot handler."
-  ([req] (default-handler/default-handler req))
-  ([req respond raise]
-   (handler-connected-component-connect req respond raise)))
-
 (tests
  (defn- connect-opts
    "Runs the connect handler on req with the SSE adapter stubbed; returns the
@@ -1010,28 +999,6 @@
                     :params         {:logged-user {:user/id "u1"}}})
      :headers)
  := {"X-Accel-Buffering" "no"}
-
- "handler-connected-component-event (deprecated, 3 arities): a request on a
-  0.3 :post route opens a connection, like the connect handler"
- (with-redefs [->sse-response (fn [_req opts] opts)]
-   (-> (handler-connected-component-event {:request-method :post
-                                           :path-params    {:component "home.home" :component-id "c1" :event "do"}
-                                           :params         {:logged-user {:user/id "u1"}}}
-                                          identity
-                                          identity)
-       :headers))
- := {"X-Accel-Buffering" "no"}
-
- "handler-connected-component-event (deprecated, 1 arity): no stream possible,
-  answered by the one-shot handler"
- (with-redefs [default-handler/default-handler (spy/spy (constantly ::one-shot))]
-   (handler-connected-component-event {:path-params {:component "cc" :component-id "cc1" :event "bump"}
-                                       :params      {:logged-user {:user/id "u1"}}})
-   := ::one-shot
-   (spy/called-once-with? default-handler/default-handler
-                          {:path-params {:component "cc" :component-id "cc1" :event "bump"}
-                           :params      {:logged-user {:user/id "u1"}}})
-   := true)
 
  "on-open: the initial render (open-flow!) runs inside an :nds-connect event
   observation; the stream is then reported opened, on the component's label"

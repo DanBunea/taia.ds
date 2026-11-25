@@ -28,13 +28,6 @@
    (/ds/nds/…)."
   #'cce/handler-connected-component-connect)
 
-(def handler-connected-component-event
-  "Deprecated: mount `handler-connected-component-connect` alone, on any
-   method. Kept so a 0.3 route map (`:get` connect, `:post` event) still
-   resolves — its async arity IS the connect handler, so a request on that
-   route opens a connection. Move a connected component's clicks to /ds/nds/…"
-  #'cce/handler-connected-component-event)
-
 #?(:clj
    (defn set-observer!
      "Installs `f` as the observer of component events on /ds/nds and

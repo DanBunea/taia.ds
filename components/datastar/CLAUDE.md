@@ -4,7 +4,7 @@ Server-side UI component framework (LiveView-style) over [Datastar](https://data
 
 ## Key namespaces
 
-- `taia.ds.datastar.interface` — `handler-component-event`, `handler-connected-component-connect`, `handler-connected-component-event` (deprecated alias), `set-component-search-paths!`, `warm-component-cache!`, `set-observer!`, `process-component-event`, `send-ui!`, `send-event!`, `start-component-flow!` / `run-flow-event!` / `stop-component-flow!`.
+- `taia.ds.datastar.interface` — `handler-component-event`, `handler-connected-component-connect`, `set-component-search-paths!`, `warm-component-cache!`, `set-observer!`, `process-component-event`, `send-ui!`, `send-event!`, `start-component-flow!` / `run-flow-event!` / `stop-component-flow!`.
 - `taia.ds.datastar.use-cases.process-event` — the use case: processing a component's event, run as a `clojure.core.async.flow` (`:controller` → `:view`, an external `:in-chan` and `:out-chan`). Plain data only: a resolved component (`{:machine-var :component-fn-var}` + `:component-name`/`:component-id`) and event messages — never a Ring request, never discovery. `start-flow!` / `stop-flow!`, `run-event!`, `await-render`, `process-event` (a one-shot event in a flow of its own). A connected component's flow lives with its stream; nothing is kept between events (a click starts from its signals, a server event from the machine's initial state and its params). Proc loops run on virtual threads. Its namespaces:
   - `process-event.controller` — the state machine proc (`step`, `proc`) and its tracing hooks.
   - `process-event.view` — the render proc (`step`, `proc`, `render`).
@@ -20,7 +20,7 @@ Server-side UI component framework (LiveView-style) over [Datastar](https://data
 
 ## Conventions
 
-- Routes: `POST /ds/nds/<component-name>/<component-id>/<event>`; connected components open a connection with `/ds/nds-connect/...` on ANY method and any event, one handler (`handler-connected-component-connect`): every request there opens an SSE stream and a new flow, registered under (component-id, user) and replacing whatever was there; that flow is what `send-event!` reaches. Clicks on a connected component are one-shot `/ds/nds/` events. `handler-connected-component-event` is a deprecated alias of the connect handler, kept for 0.3 route maps.
+- Routes: `POST /ds/nds/<component-name>/<component-id>/<event>`; connected components open a connection with `/ds/nds-connect/...` on ANY method and any event, one handler (`handler-connected-component-connect`): every request there opens an SSE stream and a new flow, registered under (component-id, user) and replacing whatever was there; that flow is what `send-event!` reaches. Clicks on a connected component are one-shot `/ds/nds/` events.
 - Component contract: `<name>.clj` pure render fn `(fn [ctx] -> hiccup)`, named after the last namespace segment, + `<name>_controller.clj` declaring `machine`.
 - Signals: `:memory` (persistent state) and `:state` (FSM keyword) round-trip as JSON via `data-signals`.
 - `send-ui!` queues component responses for async SSE delivery to a (component-id, user-id) pair — the fan-out primitive for server-initiated pushes. `send-event!` sends an EVENT to that connection's flow instead (rendered by the component's own render fn).

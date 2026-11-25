@@ -5,17 +5,16 @@
 ### Upgrading from 0.3.x
 
 - **Move a connected component's clicks to `/ds/nds/…`.** A request on `/ds/nds-connect/…` now always opens a connection, whatever its method and event. A click POSTed there would open a stream of its own on the button, and that stream would replace the page's connection as the one `send-event!` reaches.
-- **Mount the connect handler once, on any method**, and drop the `:post` route:
+- **`handler-connected-component-event` is removed.** Mount the connect handler once, on any method, and drop the `:post` route (a route map that still names it fails to compile, which points at the clicks to move):
   ```clojure
   ["/nds-connect"
    ["/:component/:component-id/:event" {:handler ds/handler-connected-component-connect}]]
   ```
-  `handler-connected-component-event` is deprecated. A 0.3 route map that still mounts it on `:post` resolves, but that route now opens a connection too.
 
 ### Connected components
 
 - `/ds/nds-connect/…` has one job: opening a connection for `send-event!`. Every request there, on any method (`@get` or `@post`) and with any event, answers with an SSE stream, starts a new flow, runs its event through it, and registers stream and flow under (component-id, user), replacing and stopping whatever was there. `send-event!` runs server events through that flow, one after the other.
-- Browser events don't go through a connection's flow any more: nothing is kept between events, so a one-shot flow renders the same. The POST-into-the-flow path of 0.3.0 is gone, and with it the observer's `:nds-connect-event` route.
+- Browser events don't go through a connection's flow any more: nothing is kept between events, so a one-shot flow renders the same. The POST-into-the-flow path of 0.3.0 is gone (`handler-connected-component-event`), and with it the observer's `:nds-connect-event` route.
 - Behaviour that does not change, now written down in [Connected components](docs/connected-components.md#the-reconnect-watchdog): a reconnect is a new connection and a new flow; server events sent while a stream is down are dropped, not queued; there is one connection per (component-id, user), not per tab.
 - Docstrings and docs no longer say a connected flow holds the ctx (it has kept nothing between events since 0.3.0).
 

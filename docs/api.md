@@ -9,7 +9,6 @@
 
 - `handler-component-event (def)` — Ring handler for dynamic component events (/ds/nds/<component>/<component-id>/<event>):
 - `handler-connected-component-connect (def)` — Async Ring handler for a connected component's path
-- `handler-connected-component-event (def)` — Deprecated: mount `handler-connected-component-connect` alone, on any
 - `set-observer! [f]` — Installs `f` as the observer of component events on /ds/nds and
 - `set-component-search-paths! [paths]` — Sets the ordered list of namespace prefixes used to resolve components.
 - `warm-component-cache! [component-names]` — Pre-resolves the given Datastar components into the discovery cache so the
