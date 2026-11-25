@@ -11,9 +11,12 @@ workspace with async Jetty, `bb dev` with an nREPL, tests, an uberjar, and the c
 ready to edit:
 
 ```shell
-clojure -Ttools install-latest :lib io.github.seancorfield/deps-new :as new   # once
 clojure -Tnew create :template io.github.danbunea/taia.ds%template%taia/app :name acme/shop
 cd shop && bb dev
+```
+You may need to do this before, and only once to install deps-new
+```shell
+clojure -Ttools install-latest :lib io.github.seancorfield/deps-new :as new   # once
 ```
 
 Server-side UI components over [Datastar](https://data-star.dev/) SSE, LiveView-style, for Clojure/Ring.
@@ -27,13 +30,13 @@ Extracted from a production Clojure application, where it drives the whole produ
 A component is a `core.async.flow` of two procs between an `in-chan` and an `out-chan`: the
 **controller** runs the component's state machine, the **view** is its render fn. A click puts the
 event, and the component's signals, on the in-chan; the render leaves on the out-chan and Datastar
-morphs it into the page. A connected component's flow stays up as long as its SSE stream, so the
-server can send it events too (`send-event!`):
+morphs it into the page:
 
 ![A component is a flow: a click's event travels in-chan → controller → view → out-chan back into the page; a connected component's flow also takes server events](docs/img/component-flow.gif)
 
-A connected component's flow has two ways in, through the same in-chan. On the live counter, a
-click POSTs +1 with the tab's signals and gets the render back; from the REPL,
+A connected component's flow stays up as long as its SSE stream, so the
+server can send it events too (`send-event!`). This flow receives events through the in-chan. On the live counter, a
+click POSTs +1 with the tab's signals will be transformed into an event and sent through in-chan to be processed, and the out-chan will pass the results back to the browser; from the REPL,
 `(ds/send-event! "live1" "demo-user" "increment" {:count 2})` sends the same event with the memory
 as params, the same controller code runs, and the new value goes down the page's open SSE stream,
 with no click and no request:
@@ -46,9 +49,11 @@ more detail, signal store and morph included, is in [example 1](docs/examples/01
 
 ## What you write
 
-Two namespaces per component: a **controller** (the state machine) and a **view** (the render fn).
-Here is the whole counter, lightly trimmed (the example's files add test ids, docstrings and a state
-viewer):
+Two namespaces per component: 
+- a **controller** (the state machine) and 
+- a **view** (the render fn).
+
+The whole counter:
 
 ```clojure
 (ns my.app.components.basics.counter-controller)
@@ -102,7 +107,7 @@ Plain functions and data: no handlers, no channels, no SSE, no registration. tai
 
 ## If you know re-frame
 
-The shape is the same, the place is different. A re-frame app dispatches events, event handlers
+A re-frame app dispatches events, event handlers
 turn `db` + event into a new `db`, subscriptions feed views that render hiccup, and all of it runs
 in the browser. Here the browser only has Datastar: it POSTs the event together with the
 component's signals, the server does the rest and sends HTML back.
@@ -117,9 +122,7 @@ component's signals, the server does the rest and sends HTML back.
 | subscription + Reagent view         | the pure render fn `(fn [ctx] -> hiccup)`           |
 | React re-render                     | Datastar morphs the returned HTML by element id      |
 
-What you give up: no client-side state besides the signals, one round trip per event. What you
-get: no ClojureScript build, no client/server state sync, server data at hand in every handler,
-and `send-ui!` to push UI to connected clients.
+No client-side state besides the signals, one round trip per event. 
 
 ## If you know XState
 
@@ -153,19 +156,6 @@ stateDiagram-v2
 The table in [docs/state-machines.md](docs/state-machines.md#if-you-know-xstate) maps each XState
 key to its Clojure counterpart.
 
-## What is in the jar
-
-| Brick | Namespace | Role |
-|-------|-----------|------|
-| `datastar` | `taia.ds.datastar.*` | Ring handlers, request pipeline, component discovery, SSE push, observer hook, `datastar.js` + `sse-reconnect.js` resources |
-| `state-machines` | `taia.ds.state-machines.*` | Hierarchical state machine (`transition`), malli schemas, mock helpers |
-| `logging` | `taia.ds.logging.*` | Thin [mulog](https://github.com/BrunoBonacci/mulog) wrapper (`trace`, `with-context`, `trace-when`); no publisher is started |
-| `extensions` | `taia.ds.extensions.*` | `assoc-if` and friends |
-
-Runtime dependency note: `hyperfiddle/rcf` and `tortue/spy` are real (small) runtime dependencies —
-the test blocks live inline in the sources and the state machine requires `spy.core`. RCF blocks
-are no-ops unless you call `(hyperfiddle.rcf/enable!)`.
-
 ## Documentation
 
 - [Getting started](docs/getting-started.md) · [Components](docs/components.md) · [State machines](docs/state-machines.md) · [Connected components and push](docs/connected-components.md)
@@ -181,66 +171,6 @@ The same articles render on cljdoc once the jar is on Clojars (`doc/cljdoc.edn`)
   request pipeline, SSE push and `datastar.js` come from the library.
 
   [![TodoMVC AI Agent demo](https://img.youtube.com/vi/8aHSc9F6aws/maxresdefault.jpg)](https://youtu.be/8aHSc9F6aws)
-
-## Wiring it into an application
-
-The [`taia/app` template](docs/new-project.md) generates all of this. This section is what it does by hand.
-
-The library ships no routes: your base owns them. Mount the three handlers on these three shapes
-(reitit shown; any router that sets `:path-params` works):
-
-```clojure
-(require '[taia.ds.datastar.interface :as ds])
-
-["/ds"
- ["/nds"
-  ["/:component/:component-id/:controller/:event" {:handler ds/handler-component-event}]
-  ["/:component/:component-id/:event"             {:handler ds/handler-component-event}]]
- ["/nds-connect"
-  ["/:component/:component-id/:event"             {:get  {:handler ds/handler-connected-component-connect}
-                                                   :post {:handler ds/handler-connected-component-event}}]]]
-```
-
-The handlers expect, on the request:
-
-| Key | Who sets it | Used for |
-|-----|-------------|----------|
-| `:path-params` `:component` `:component-id` `:event` (`:controller` optional) | router | which component / FSM event |
-| `:body-params` (JSON, e.g. via muuntaja) or `[:params :datastar]` (GET) | your middleware | the signal store round-trip |
-| `[:params :logged-user :user/id]` | your auth middleware | keys SSE connections per user |
-| `:app-config` (optional) | your middleware | forwarded into the component ctx |
-
-`handler-connected-component-connect` is **async-only** (`[req respond raise]`): run Jetty with
-`:async? true` (or an equivalent async adapter).
-
-At startup:
-
-```clojure
-(ds/set-component-search-paths! ["my.app.components"])   ; required: the default is empty
-(future (ds/warm-component-cache! ["home.home" "chat.chat"]))   ; optional, avoids first-request load cost
-(ds/set-observer! my-metrics-fn)                                 ; optional, see docstring
-```
-
-Static assets — add `(ring.middleware.resource/wrap-resource handler "datastar")` (plus
-`wrap-content-type`, browsers refuse a module script without a MIME type) and load them from your
-page head:
-
-```clojure
-[:script {:type "module" :src "/js/datastar.js"}]     ; Datastar v1.0.0-RC.8
-[:script {:src "/js/sse-reconnect.js" :defer true}]   ; reconnect watchdog for /ds/nds-connect streams
-```
-
-Server-initiated pushes to an open connected component:
-
-```clojure
-(ds/send-ui! component-id user-id [[:patch [:div#cc1 "hello"]]])
-```
-
-Full-page renders at a canonical URL (`GET /` → a page component's `INIT`):
-
-```clojure
-(let [{:keys [html]} (ds/process-component-event req "home.home" "home" "INIT" nil)] ...)
-```
 
 ## Writing a component
 
@@ -287,27 +217,6 @@ bb deploy        # to Clojars
 `clojure -M:poly <cmd>` runs any other poly command. The library artifact is `projects/taia-ds`
 (the four bricks, nothing else); `projects/examples` adds the `examples` base and is never
 published. `build.clj` inlines the bricks into one jar whose pom lists Maven libraries only.
-
-### Publishing
-
-1. Verify the `io.github.danbunea` group once on Clojars: create a public GitHub repository named
-   `clojars-danbunea` (see [Verified Group Names](https://github.com/clojars/clojars-web/wiki/Verified-Group-Names)).
-2. Create a Clojars deploy token and export `CLOJARS_USERNAME` and `CLOJARS_PASSWORD` (the token).
-3. Bump the version pin in this README, `docs/getting-started.md` and `:taia-version` in
-   `template/resources/taia/app/template.edn` (`bb template-test` checks that the template and README
-   agree).
-4. `bb deploy` (optionally `bb deploy :version '"0.3.2"'`), then tag `v<version>`. The tag also pins
-   the template: `…%template%taia/app#v<version>`.
-
-## Migrating from the in-app namespaces
-
-| Before (in-app)       | After |
-|-----------------------|-------|
-| `ds.interface`, `ds.adapters.*`, `ds.domain.*` | `taia.ds.datastar.interface`, `taia.ds.datastar.adapters.*`, `taia.ds.datastar.domain.*` |
-| `state-machines.*` | `taia.ds.state-machines.*` |
-| `logging.interface` | `taia.ds.logging.interface` |
-| `extensions.interface` | `taia.ds.extensions.interface` |
-| search path `"ds.adapters.components"` | gone: the library has no components of its own, so the default is `[]` and the application lists only its own prefixes |
 
 ## License
 
