@@ -32,13 +32,13 @@ server can send it events too (`send-event!`):
 
 ![A component is a flow: a click's event travels in-chan → controller → view → out-chan back into the page; a connected component's flow also takes server events](docs/img/component-flow.gif)
 
-A connected component's flow has two ways in, through the same in-chan. On the live counter, a
-click POSTs +1 with the tab's signals and gets the render back; from the REPL,
+A connected component has two ways in. On the live counter, a click POSTs +1 with the tab's
+signals, runs in a flow of its own and gets the render back; from the REPL,
 `(ds/send-event! "live1" "demo-user" "increment" {:count 2})` sends the same event with the memory
-as params, the same controller code runs, and the new value goes down the page's open SSE stream,
-with no click and no request:
+as params through the flow the page's connection opened, the same controller code runs, and the
+new value goes down the page's open SSE stream, with no click and no request:
 
-![The live counter: a click and a REPL send-event! both send :INCREMENT through the same in-chan; the click carries the tab's signals, the REPL sends the memory as params; the count goes 1, 2, 3 and the last render arrives over the open SSE stream](docs/img/repl-event-flow.gif)
+![The live counter: a click is a one-shot event in a flow of its own; a REPL send-event! goes through the connection's flow; both run INCREMENT, the click from the tab's signals, the REPL with the memory as params; the count goes 1, 2, 3 and the last render arrives over the open SSE stream](docs/img/repl-event-flow.gif)
 
 (Both are generated: [`scripts/component_flow_svg.clj`](scripts/component_flow_svg.clj) writes the
 animated SVGs in [`docs/img/`](docs/img/), and `bb component-flow-gif` renders the GIFs. The click in
@@ -196,9 +196,8 @@ The library ships no routes: your base owns them. Mount the three handlers on th
  ["/nds"
   ["/:component/:component-id/:controller/:event" {:handler ds/handler-component-event}]
   ["/:component/:component-id/:event"             {:handler ds/handler-component-event}]]
- ["/nds-connect"
-  ["/:component/:component-id/:event"             {:get  {:handler ds/handler-connected-component-connect}
-                                                   :post {:handler ds/handler-connected-component-event}}]]]
+ ["/nds-connect"                                   ; any method: every request opens a connection for send-event!
+  ["/:component/:component-id/:event"             {:handler ds/handler-connected-component-connect}]]]
 ```
 
 The handlers expect, on the request:

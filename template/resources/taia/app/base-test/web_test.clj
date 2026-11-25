@@ -114,6 +114,14 @@
  "2 live counter: INIT seeds the count at 0, in :memory"
  (run "live.live-counter" "live1" {} "init") := {:memory {:count 0} :state :displayed :html _ :ctx _}
 
+ "2 live counter: the buttons post one-shot events to /ds/nds/, not to the
+  nds-connect path (a request there would open a connection of its own)"
+ (-> (run "live.live-counter" "live1" {} "init")
+     :html
+     ts/extract-post-urls)
+ := ["/ds/nds/live.live-counter/live1/increment?user="
+     "/ds/nds/live.live-counter/live1/reset?user="]
+
  "2 live counter: a click starts from the count in the tab's signals"
  (run "live.live-counter" "live1" {:memory {:count 1} :state :displayed} "increment")
  := {:memory {:count 2} :state :displayed :html _ :ctx _}

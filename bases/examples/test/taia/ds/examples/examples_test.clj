@@ -120,6 +120,14 @@
  "2 live counter: INIT seeds the count at 0, in :memory"
  (run "live.live-counter" "live1" {} "init") := {:memory {:count 0} :state :displayed :html _ :ctx _}
 
+ "2 live counter: the buttons post one-shot events to /ds/nds/, not to the
+  nds-connect path (a request there would open a connection of its own)"
+ (-> (run "live.live-counter" "live1" {} "init")
+     :html
+     ts/extract-post-urls)
+ := ["/ds/nds/live.live-counter/live1/increment?user="
+     "/ds/nds/live.live-counter/live1/reset?user="]
+
  "2 live counter: a click starts from the count in the tab's signals"
  (run "live.live-counter" "live1" {:memory {:count 1} :state :displayed} "increment")
  := {:memory {:count 2} :state :displayed :html _ :ctx _}
@@ -570,20 +578,26 @@
  ;; the ticker with a spy (no real TICK arrives; the case sends its TICKs).
  (defn- through-a-flow
    "Starts a fresh countdown flow and INITs it, then sends each of `events` in
-    order — `[:browser event opts]` is a POST to the connected path,
-    `[:server event params]` is `ds/send-event!` (no request) — stops the flow
-    and returns the last result."
+    order — `[:browser event opts]` is a one-shot POST to /ds/nds/ (it does
+    not touch the flow), `[:server event params]` is `ds/send-event!` through
+    the flow (no request) — stops the flow and returns the last result."
    [& events]
    (let [[cf init] (ts/connect "live.countdown" "countdown1" {})]
      (try
        (reduce (fn [_ [kind event opts]]
                  (case kind
-                   :browser (ts/flow-event cf "countdown1" event opts)
+                   :browser (run "live.countdown" "countdown1" opts event)
                    :server (ts/server-event cf event opts)))
                init
                events)
        (finally
          (ds/stop-component-flow! cf)))))
+
+ "7 countdown: Start posts a one-shot event to /ds/nds/, not to the nds-connect path"
+ (-> (through-a-flow)
+     :html
+     ts/extract-post-urls)
+ := ["/ds/nds/live.countdown/countdown1/start?user="]
 
  "7 countdown: INIT through the flow — :idle at 5, :remaining is top-level ctx, never in :memory"
  (through-a-flow) := {:memory {} :state :idle :html _ :ctx _}
@@ -596,8 +610,8 @@
      (testid-text "remaining"))
  := "5"
 
- "7 countdown: START is a browser event through the flow; it moves to :running
-  at 5 and starts the ticker for this tab"
+ "7 countdown: START is a one-shot browser event; it moves to :running at 5
+  and starts the ticker for this tab"
  (with-redefs [countdown/start-ticker! (spy/spy)]
    (through-a-flow [:browser "start"]) := {:memory {} :state :running :html _ :ctx _}
    (spy/called-once-with? countdown/start-ticker! "countdown1" "tester" 5) := true)

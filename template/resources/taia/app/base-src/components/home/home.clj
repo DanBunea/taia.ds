@@ -1,9 +1,9 @@
 (ns {{top/ns}}.{{main/ns}}.web.components.home.home
   "The home page as a Datastar component: `<body>` is the component's root
    (id `home`, the page's signals on it), and each page mounts ONE child
-   component — a `div` whose `data-init` fires the child's INIT, either a
-   one-shot `@post` to /ds/nds/… or, for connected components, an `@get` to
-   /ds/nds-connect/… that keeps the SSE stream open.
+   component — a `div` whose `data-init` POSTs the child's INIT, either
+   one-shot to /ds/nds/… or, for connected components, to /ds/nds-connect/…,
+   which opens the connection (and keeps the SSE stream open).
 
    Two signal stores on the page: the page's own (`$home.*`, on `<body>`,
    what this component round-trips) and a page-level `$user`, seeded on
@@ -38,15 +38,24 @@
    .index li{margin:.75rem 0}.index a{font-weight:600}
    footer{max-width:720px;margin:2rem auto;padding:0 1rem}")
 
-(defn- init-url [{:keys [component cid connected?]}]
+(defn- init-url
+  "The child's INIT: /ds/nds/… answers once; /ds/nds-connect/… opens the
+   connection a connected component's server events (`send-event!`) need."
+  [{:keys [component cid connected?]}]
   (str (if connected? "/ds/nds-connect/" "/ds/nds/") component "/" cid "/init"))
 
 (defn- mount
-  "The element the example's component is mounted in."
+  "The element the child component is mounted in: a wrapper whose `data-init`
+   POSTs the child's INIT, around the `#cid` element the child's render
+   replaces. A connected child's wrapper also re-opens the connection when the
+   reconnect watchdog (sse-reconnect.js) fires `ds-reconnect` on it. The
+   marker sits on the wrapper because the render morphs `#cid` and drops
+   every attribute it does not render itself."
   [{:keys [cid connected?] :as example}]
-  [:div {:id cid
-         "data-init" (str (if connected? "@get('" "@post('") (init-url example) "?user='+$user)")}
-   [:p.muted "loading…"]])
+  (let [init (str "@post('" (init-url example) "?user='+$user)")]
+    [:div (cond-> {:id (str cid "-mount") "data-init" init}
+            connected? (assoc "data-on:ds-reconnect" init))
+     [:div {:id cid} [:p.muted "loading…"]]]))
 
 (defn- index []
   [[:h1 "{{main}}"]

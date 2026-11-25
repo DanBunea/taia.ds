@@ -5,7 +5,7 @@
 // Safari can kill a stream with NO error at all (tab suspension, HTTP/3
 // stalls, BFCache restores) — datastar never notices, so it never retries.
 // Any element carrying a `data-on:ds-reconnect` attribute (whose expression
-// re-issues the connect @get) opts into this watchdog: once the element has
+// re-opens the nds-connect connection, by @get or @post) opts into this watchdog: once the element has
 // started a fetch, the watchdog re-dispatches `ds-reconnect` on it whenever
 // its stream dies terminally or goes silent.
 (function () {

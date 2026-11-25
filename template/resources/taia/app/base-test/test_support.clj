@@ -35,21 +35,15 @@
   {:memory (:memory ctx) :state (:state ctx) :html html :ctx ctx})
 
 (defn connect
-  "Starts `component`'s flow the way a connected component's stream does,
+  "Starts `component`'s flow the way a request on the nds-connect path does,
    and runs INIT through it. Nothing is kept between events.
-   Returns [flow result]; drive the flow with `flow-event` / `server-event`
-   and stop it with `ds/stop-component-flow!`."
+   Returns [flow result]; send it server events with `server-event` (what
+   `ds/send-event!` does) and stop it with `ds/stop-component-flow!`.
+   Browser events are one-shot: `run` / `step`."
   [component cid opts]
   (ds/set-component-search-paths! core/search-paths)
   (let [cf (ds/start-component-flow! {:component-name component :component-id cid})]
     [cf (result-of (ds/run-flow-event! cf (request cid opts) "init"))]))
-
-(defn flow-event
-  "A browser event on a connected flow (what a POST to the nds-connect path
-   does): `opts` are the request's `:memory`/`:state`/`:params`, the tab's
-   signals it starts from."
-  ([cf cid event] (flow-event cf cid event nil))
-  ([cf cid event opts] (result-of (ds/run-flow-event! cf (request cid opts) event))))
 
 (defn server-event
   "A server event on a connected flow (what `ds/send-event!` does): no

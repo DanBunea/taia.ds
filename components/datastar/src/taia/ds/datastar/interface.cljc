@@ -17,17 +17,22 @@
   #'ce/default-handler)
 ;; Connected component handler (SSE)
 (def handler-connected-component-connect
-  "Async Ring handler that opens an SSE connection for a connected component
-   and registers it so `send-ui!` can push updates to that client."
+  "Async Ring handler for a connected component's path
+   (/ds/nds-connect/<component>/<component-id>/<event>), mounted on ANY method.
+   Every request opens a connection, whatever its event: an SSE stream and a
+   new flow for the component, registered under (component-id, user) so
+   `send-ui!` and `send-event!` reach that client. It replaces (and stops the
+   flow of) any connection registered there before, so a reconnect or a reload
+   takes over. The request's event is the first to run through the flow.
+   Browser events after the open belong on `handler-component-event`
+   (/ds/nds/…)."
   #'cce/handler-connected-component-connect)
 
 (def handler-connected-component-event
-  "Ring handler (both arities) for an event POSTed to a connected component's
-   path (/ds/nds-connect/<component>/<component-id>/<event>). The event runs
-   through the component flow that lives with the user's open stream, so it
-   transitions from the ctx that flow holds, and the POST is answered with the
-   render like a default component's. Without an open stream it falls back to
-   `handler-component-event`."
+  "Deprecated: mount `handler-connected-component-connect` alone, on any
+   method. Kept so a 0.3 route map (`:get` connect, `:post` event) still
+   resolves — its async arity IS the connect handler, so a request on that
+   route opens a connection. Move a connected component's clicks to /ds/nds/…"
   #'cce/handler-connected-component-event)
 
 #?(:clj
@@ -122,9 +127,9 @@
 #?(:clj
    (defn send-event!
      "Sends a server event to the connected component (component-id, user-id):
-      it runs through that connection's component flow — transitioning from
-      the ctx the flow holds — and the render is pushed down the open SSE
-      stream. `event-name` is case-insensitive like a URL event; `params` is
+      it runs through that connection's component flow — from the machine's
+      initial state, with `params` — and the render is pushed down the open
+      SSE stream. `event-name` is case-insensitive like a URL event; `params` is
       the event's params map. Returns true when queued, false when that user
       has no open connection under component-id."
      [component-id user-id event-name params]

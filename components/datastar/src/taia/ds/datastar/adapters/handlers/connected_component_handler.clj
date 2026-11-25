@@ -4,13 +4,16 @@
    open SSE stream AND the component flow (`taia.ds.datastar.use-cases.process-event`)
    that lives as long as it.
 
-   On connection open, the flow is started (holding the ctx between events),
-   the INIT event runs through it, and its render is sent down the stream.
-   Afterwards:
-   - a POST on the same path (`handler-connected-component-event`) runs through
-     the SAME flow and answers with the render, like a default component;
-   - `send-event!` puts a server event on the flow, and its render is pushed
-     down the open stream."
+   One route, any method and any event:
+   /ds/nds-connect/<component>/<component-id>/<event>. Every request opens a
+   connection: a new flow starts, the request's event runs through it, and its
+   render is sent down the stream. The flow is registered with the stream under
+   (component-id, user), replacing (and stopping) whatever was there, so a
+   reconnect or a reload simply takes over. The registered flow is what
+   `send-event!` puts server events on; their renders are pushed down the open
+   stream. Browser events after the open belong on /ds/nds/… (one-shot): a
+   request on the connect path would open a connection of its own.
+   The flow keeps nothing between events."
   (:require
    [taia.ds.logging.interface :as log]
    [taia.ds.datastar.use-cases.process-event :as process-event]
@@ -19,7 +22,7 @@
    [taia.ds.datastar.adapters.handlers.default-component-handler :as default-handler]
    [taia.ds.datastar.adapters.handlers.discovery :as discovery]
    [taia.ds.datastar.adapters.handlers.observer :as observer]
-   [taia.ds.datastar.adapters.handlers.response :refer [send-effect! render-response error-response]]
+   [taia.ds.datastar.adapters.handlers.response :refer [send-effect!]]
    [starfederation.datastar.clojure.adapter.ring :refer [->sse-response on-open on-close]]
    [starfederation.datastar.clojure.api :as d*]
    [dev.onionpancakes.chassis.compiler :as hc]
@@ -837,7 +840,7 @@
             send-html-to-sse!)))
 
 (tests
- "open-flow!: starts the component's flow (holding its ctx), registers it with
+ "open-flow!: starts the component's flow, registers it with
   the stream, starts draining it, runs the connect's event (INIT) through it
   and sends that render down the stream"
  (with-redefs [discovery/resolve-component (spy/spy (constantly {:machine-var ::machine :component-fn-var ::view}))
@@ -889,8 +892,8 @@
 
 (defn send-event!
   "Puts a server event on the flow of the connection (component-id, user-id):
-   it transitions from the ctx the flow holds, and its render is pushed down
-   that connection's stream. The caller's trace rides along. Returns true when
+   it starts from the machine's initial state with `params`, and its render is
+   pushed down that connection's stream. The caller's trace rides along. Returns true when
    the event was queued, false when there is no open connection with a flow."
   [component-id user-id event-name params]
   (if-let [{:keys [in-chan]} (get-in @!connections [component-id user-id :flow])]
@@ -921,9 +924,18 @@
  (send-event! "cc1" "u1" "bump" {}) := false
  (reset! !connections {}))
 
-;;; SSE connect handler
+;;; The connect path's handler
 
-(defn handler-connected-component-connect [req respond _raise]
+(defn handler-connected-component-connect
+  "Async Ring handler for /ds/nds-connect/<component>/<component-id>/<event>,
+   on any HTTP method and with any event: every request opens a connection.
+   It answers with an SSE stream. On open, a new flow for the component starts
+   and is registered with the stream under (component-id, user), replacing
+   (and stopping the flow of) whatever was registered there; the request's
+   event runs through it and its render goes down the stream. On close, the
+   connection is unregistered and its flow stopped. The registered flow is
+   what `send-event!` sends to — browser events belong on /ds/nds/…"
+  [req respond _raise]
   (let [component (keyword (get-in req [:path-params :component]))
         component-id (get-in req [:path-params :component-id])
         event-name (get-in req [:path-params :event])
@@ -965,153 +977,15 @@
            (when (map? token)
              (observer/connection-closed! token))))}))))
 
-;;; Events for a connected component (POST on the connect path)
-
-(defn- connected-event-response
-  "Runs a browser event through the connection's flow — so it transitions from
-   the ctx the flow holds — and answers with the render exactly like a default
-   component does (HTML, or a one-shot SSE for an effects list). Without an
-   open connection (stream closed, client reconnecting) it falls back to the
-   default one-shot handler, so the click still gets a render."
-  [req]
-  (let [component    (keyword (get-in req [:path-params :component]))
-        component-id (get-in req [:path-params :component-id])
-        event-name   (get-in req [:path-params :event])
-        user-id      (get-in req [:params :logged-user :user/id])
-        cf           (get-in @!connections [component-id user-id :flow])
-        result       (when cf
-                       (observer/observe-event!
-                        :nds-connect-event component nil event-name
-                        (fn []
-                          (try
-                            (some-> (run-through-flow! cf req component component-id event-name)
-                                    (assoc :request req)
-                                    render-response)
-                            (catch Exception e
-                              (error-response e component component-id event-name nil))))))]
-    (or result (default-handler/default-handler req))))
-
 (defn handler-connected-component-event
-  "Ring handler (both arities) for an event POSTed to a connected component's
-   path (/ds/nds-connect/<component>/<component-id>/<event>): it runs through
-   the flow that lives with the user's open stream."
-  ([req] (connected-event-response req))
+  "Deprecated: mount `handler-connected-component-connect` alone, on any
+   method. Kept so a 0.3 route map (`:get` connect, `:post` event) still
+   resolves: its async arity IS the connect handler, so a request here opens
+   a connection, whatever its method. The sync arity (no stream possible)
+   answers like the one-shot handler."
+  ([req] (default-handler/default-handler req))
   ([req respond raise]
-   (try
-     (respond (connected-event-response req))
-     (catch Exception e
-       (raise e)))))
-
-(tests
- (defn- observe-through [_route _component _controller _event f] (f))
-
- "connected-event-response: with an open connection the event runs through
-  THAT connection's flow (so it transitions from the ctx the flow holds),
-  inside an :nds-connect-event observation, and is answered with the render
-  like a default component — never pushed down the stream"
- (reset! !connections {"cc1" {"u1" {:sse-gen ::sse-1 :flow ::flow}}})
- (with-redefs [observer/observe-event!         (spy/spy observe-through)
-               run-through-flow!               (spy/spy (constantly {:html [:p "2"]}))
-               render-response                 (spy/spy (constantly {:status 200 :body "<p>2</p>"}))
-               default-handler/default-handler (spy/spy)]
-   (connected-event-response {:path-params {:component "cc" :component-id "cc1" :event "bump"}
-                              :params      {:logged-user {:user/id "u1"}}})
-   := {:status 200 :body "<p>2</p>"}
-   (spy/calls observer/observe-event!) := [[:nds-connect-event :cc nil "bump" _]]
-   (spy/called-once-with? run-through-flow!
-                          ::flow
-                          {:path-params {:component "cc" :component-id "cc1" :event "bump"}
-                           :params      {:logged-user {:user/id "u1"}}}
-                          :cc "cc1" "bump")
-   := true
-   (spy/called-once-with? render-response
-                          {:html    [:p "2"]
-                           :request {:path-params {:component "cc" :component-id "cc1" :event "bump"}
-                                     :params      {:logged-user {:user/id "u1"}}}})
-   := true
-   (spy/not-called? default-handler/default-handler) := true)
-
- "connected-event-response: the flow throws → an error response for that event"
- (reset! !connections {"cc1" {"u1" {:sse-gen ::sse-1 :flow ::flow}}})
- (with-redefs [observer/observe-event! (spy/spy observe-through)
-               run-through-flow!       (fn [& _] (throw (ex-info "boom" {})))
-               error-response          (spy/spy (constantly {:status 500}))]
-   (connected-event-response {:path-params {:component "cc" :component-id "cc1" :event "bump"}
-                              :params      {:logged-user {:user/id "u1"}}})
-   := {:status 500}
-   (-> error-response
-       spy/last-call
-       vec
-       (update 0 ex-message))
-   := ["boom" :cc "cc1" "bump" nil])
-
- "connected-event-response: no render (the flow's in-chan already closed) →
-  falls back to the default one-shot handler"
- (reset! !connections {"cc1" {"u1" {:sse-gen ::sse-1 :flow ::flow}}})
- (with-redefs [observer/observe-event!         (spy/spy observe-through)
-               run-through-flow!               (spy/spy (constantly nil))
-               render-response                 (spy/spy)
-               default-handler/default-handler (spy/spy (constantly ::one-shot))]
-   (connected-event-response {:path-params {:component "cc" :component-id "cc1" :event "bump"}
-                              :params      {:logged-user {:user/id "u1"}}})
-   := ::one-shot
-   (spy/not-called? render-response) := true
-   (spy/called-once-with? default-handler/default-handler
-                          {:path-params {:component "cc" :component-id "cc1" :event "bump"}
-                           :params      {:logged-user {:user/id "u1"}}})
-   := true)
-
- "connected-event-response: a POST with no open connection falls back to the
-  default one-shot handler"
- (reset! !connections {})
- (with-redefs [run-through-flow!               (spy/spy)
-               default-handler/default-handler (spy/spy (constantly ::one-shot))]
-   (connected-event-response {:path-params {:component "cc" :component-id "cc1" :event "bump"}
-                              :params      {:logged-user {:user/id "u1"}}})
-   := ::one-shot
-   (spy/not-called? run-through-flow!) := true
-   (spy/called-once-with? default-handler/default-handler
-                          {:path-params {:component "cc" :component-id "cc1" :event "bump"}
-                           :params      {:logged-user {:user/id "u1"}}})
-   := true)
-
- "handler-connected-component-event (1 arity): the connected event's response"
- (with-redefs [connected-event-response (spy/spy (constantly ::response))]
-   (handler-connected-component-event {:path-params {:component "cc" :component-id "cc1" :event "bump"}
-                                       :params      {:logged-user {:user/id "u1"}}})
-   := ::response
-   (spy/called-once-with? connected-event-response
-                          {:path-params {:component "cc" :component-id "cc1" :event "bump"}
-                           :params      {:logged-user {:user/id "u1"}}})
-   := true)
-
- "handler-connected-component-event (3 arities): the response goes to respond"
- (def ^:private respond-ok (spy/spy))
- (def ^:private raise-ok (spy/spy))
- (with-redefs [connected-event-response (spy/spy (constantly ::response))]
-   (handler-connected-component-event {:path-params {:component "cc" :component-id "cc1" :event "bump"}
-                                       :params      {:logged-user {:user/id "u1"}}}
-                                      respond-ok
-                                      raise-ok)
-   (spy/called-once-with? connected-event-response
-                          {:path-params {:component "cc" :component-id "cc1" :event "bump"}
-                           :params      {:logged-user {:user/id "u1"}}})
-   := true
-   (spy/called-once-with? respond-ok ::response) := true
-   (spy/not-called? raise-ok) := true)
-
- "handler-connected-component-event (3 arities): an exception goes to raise"
- (def ^:private failure (ex-info "boom" {}))
- (def ^:private respond-failed (spy/spy))
- (def ^:private raise-failed (spy/spy))
- (with-redefs [connected-event-response (fn [_] (throw failure))]
-   (handler-connected-component-event {:path-params {:component "cc" :component-id "cc1" :event "bump"}
-                                       :params      {:logged-user {:user/id "u1"}}}
-                                      respond-failed
-                                      raise-failed)
-   (spy/not-called? respond-failed) := true
-   (spy/called-once-with? raise-failed failure) := true)
- (reset! !connections {}))
+   (handler-connected-component-connect req respond raise)))
 
 (tests
  (defn- connect-opts
@@ -1128,6 +1002,36 @@
                     :params      {:logged-user {:user/id "u1"}}})
      :headers)
  := {"X-Accel-Buffering" "no"}
+
+ "handler-connected-component-connect: any method and any event open a
+  connection — a POSTed `do` as much as a GET's INIT"
+ (-> (connect-opts {:request-method :post
+                    :path-params    {:component "home.home" :component-id "c1" :event "do"}
+                    :params         {:logged-user {:user/id "u1"}}})
+     :headers)
+ := {"X-Accel-Buffering" "no"}
+
+ "handler-connected-component-event (deprecated, 3 arities): a request on a
+  0.3 :post route opens a connection, like the connect handler"
+ (with-redefs [->sse-response (fn [_req opts] opts)]
+   (-> (handler-connected-component-event {:request-method :post
+                                           :path-params    {:component "home.home" :component-id "c1" :event "do"}
+                                           :params         {:logged-user {:user/id "u1"}}}
+                                          identity
+                                          identity)
+       :headers))
+ := {"X-Accel-Buffering" "no"}
+
+ "handler-connected-component-event (deprecated, 1 arity): no stream possible,
+  answered by the one-shot handler"
+ (with-redefs [default-handler/default-handler (spy/spy (constantly ::one-shot))]
+   (handler-connected-component-event {:path-params {:component "cc" :component-id "cc1" :event "bump"}
+                                       :params      {:logged-user {:user/id "u1"}}})
+   := ::one-shot
+   (spy/called-once-with? default-handler/default-handler
+                          {:path-params {:component "cc" :component-id "cc1" :event "bump"}
+                           :params      {:logged-user {:user/id "u1"}}})
+   := true)
 
  "on-open: the initial render (open-flow!) runs inside an :nds-connect event
   observation; the stream is then reported opened, on the component's label"

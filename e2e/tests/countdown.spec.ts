@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { collectConsoleErrors } from './helpers/console-guard';
 
-// The component's flow holds its state; after one click the SERVER drives it:
+// After one click the SERVER drives it through the component's flow:
 // every TICK is a send-event! rendered by the flow and pushed down the stream.
 test('countdown: one click, then server events count down to 0', async ({ page }) => {
   const errors = collectConsoleErrors(page);

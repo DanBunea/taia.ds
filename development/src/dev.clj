@@ -92,6 +92,7 @@
   ;; More in the countdown and live-counter controllers' comment blocks.
   (ds/connections) ; who can be reached: {component-id [user-id …]}
   (ds/send-event! "countdown1" "demo-user" "start" {})
+  (ds/send-event! "live1" "demo-user" "INCREMENT" {:count 5 :state :displayed})
 
   ;; send-ui! pushes a hand-built fragment instead of an event; :broadcast
   ;; reaches every tab connected under the component-id.

@@ -398,8 +398,9 @@
       :extras ""})))
 
 ;;; ---------------------------------------------------------------------------
-;;; Scene 2 — a connected component (the live counter) with two senders on one
-;;; in-chan: the browser on the left, a REPL send-event! on the right
+;;; Scene 2 — a connected component (the live counter) with two ways in: a
+;;; one-shot click (a flow of its own) on the left, a REPL send-event! through
+;;; the connection's flow on the right
 ;;; ---------------------------------------------------------------------------
 
 (def browser2 {:x 32 :y 140 :w 210 :h 450})
@@ -423,17 +424,17 @@
            "taia.ds does the rest: the routes, the flow and its chans, the SSE stream, send-event!, the morph."]}
    {:t [4.6 8.6]
     :glow [:flow :in-chan :stream]
-    :title "A connected component: one in-chan, two ways in"
-    :text ["The live counter page opened an SSE stream, so its flow stays up."
-           "The browser and the server both send it events through the same in-chan."]}
+    :title "A connected component: two ways in"
+    :text ["The live counter page opened a connection on the nds-connect path: an SSE stream, and a flow that stays up."
+           "A click is a one-shot event in a flow of its own; send-event! goes through the connection's flow."]}
    {:t [8.6 12.8]
     :click 9.0
     :packet {:path [[browser-x 140] [browser-x bus-y] [640 bus-y] [640 168]] :move [9.4 10.8] :label "[:INCREMENT {}] + {:count 1}" :color EVENT-C}
     :glow [:in-chan :browser]
     :code [:inc :machine]
-    :title "A click: +1 into the in-chan"
-    :text ["@post('/ds/nds-connect/live.live-counter/live1/increment') carries the tab's signals,"
-           "{\"live1\": {\"count\": 1, \"state\": \"displayed\"}}; increment takes the count from the memory: 1 → 2."]}
+    :title "A click: a one-shot +1"
+    :text ["@post('/ds/nds/live.live-counter/live1/increment') carries the tab's signals and runs in a flow of its own,"
+           "built from the same controller and view; increment takes the count from the memory: 1 → 2."]}
    {:t [12.8 16.6]
     :packets [{:path [[666 374] [666 410]] :move [13.0 13.6] :label "ctx {:count 2}" :color CTX-C}
               {:path [[384 480] [310 480] [190 480]] :move [14.0 15.0] :label "<div#live1> 2" :color HTML-C}]
@@ -441,14 +442,14 @@
     :code [:render]
     :morph 15.0
     :title "…and the render comes back"
-    :text ["The view renders the new ctx, and the POST is answered with it: the tab shows 2,"
-           "and its signals now hold {\"live1\": {\"count\": 2, \"state\": \"displayed\"}}."]}
+    :text ["The view renders the new ctx, and the POST is answered with it: the tab shows 2, and its signals"
+           "now hold {\"live1\": {\"count\": 2, \"state\": \"displayed\"}}. The click's flow stops."]}
    {:t [16.6 21.2]
     :type 16.9
     :packet {:path [[repl-x 140] [repl-x bus-y] [640 bus-y] [640 168]] :move [17.8 19.2] :label "[:INCREMENT {:count 2}]" :color SERVER-C}
     :reply 18.0
     :glow [:repl :in-chan]
-    :title "The REPL: the same event, into the same in-chan"
+    :title "The REPL: the same event, into the connection's flow"
     :text ["(ds/send-event! \"live1\" \"demo-user\" \"increment\" {:count 2}): a server event has no request"
            "and no signals, so the REPL sends the memory as params. It answers true at once."]}
    {:t [21.2 24.8]
@@ -467,9 +468,9 @@
            "and its signals hold {\"live1\": {\"count\": 3, …}} for the next click."]}
    {:t [29.2 33.4]
     :glow [:browser :repl :in-chan]
-    :title "Two senders, one in-chan"
-    :text ["A click and a send-event! are the same kind of message, handled by the same controller and view."
-           "You wrote those two; the route, the flow, its chans and the stream are taia.ds."]}])
+    :title "Two ways in, the same code"
+    :text ["A click and a send-event! are the same kind of message, handled by the same controller and view:"
+           "the click in a flow of its own, send-event! in the connection's. You wrote those two; the rest is taia.ds."]}])
 
 (defn live-scene []
   (let [click-t (some :click *steps*)
@@ -487,9 +488,9 @@
         cx (+ (:x controller2) 22)
         vx (+ (:x view2) 22)]
     (page
-     {:title "taia.ds — a connected component: the browser and the REPL, one in-chan"
-      :subtitle "a click (POST) and a server event (send-event!) enter the same flow, and run the same controller and view"
-      :generated "Two senders, one in-chan: a click and a REPL send-event! into the connected live counter's flow"
+     {:title "taia.ds — a connected component: the browser and the REPL"
+      :subtitle "a click (a one-shot POST) and a server event (send-event!) run the same controller and view"
+      :generated "Two ways in: a one-shot click, and a REPL send-event! through the connected live counter's flow"
       :yours [controller2 view2]}
      (str
       ;; ---- the browser (left)
@@ -509,9 +510,9 @@
       "<circle cx=\"63\" cy=\"459\" r=\"4.5\" fill=\"" SUCCESS "\">"
       (anim-opacity (for [t (range 0 (+ *T* 0.01) 0.5)] [t (if (even? (int (* 2 t))) 1 0.35)])) "</circle>"
       (text 73 464 "SSE stream open" :font-size 12 :fill SUCCESS :font-weight 500)
-      (text 50 530 "a click POSTs to the" :font-size 12 :fill MUTED)
-      (text 50 546 "nds-connect path: it enters" :font-size 12 :fill MUTED)
-      (text 50 562 "the flow the stream opened" :font-size 12 :fill MUTED)
+      (text 50 530 "a click POSTs to /ds/nds:" :font-size 12 :fill MUTED)
+      (text 50 546 "a one-shot event, in a" :font-size 12 :fill MUTED)
+      (text 50 562 "flow of its own" :font-size 12 :fill MUTED)
 
       ;; ---- the REPL (right)
       (rect repl2 :rx 16 :fill CHROME :stroke CHROME :stroke-width 1.5)
@@ -530,12 +531,19 @@
       ;; ---- the senders' wires: one line along the top, into the in-chan
       (wire [[browser-x 140] [browser-x bus-y] [582 bus-y]])
       (wire [[repl-x 140] [repl-x bus-y] [698 bus-y]])
-      (text 300 100 "POST (a click)" :font-size 12 :font-family MONO :fill MUTED)
+      (text 300 100 "POST /ds/nds (a click)" :font-size 12 :font-family MONO :fill MUTED)
       (text 980 100 "send-event!" :font-size 12 :font-family MONO :fill MUTED :text-anchor "end")
 
       ;; ---- the flow
       (rect flow2 :rx 16 :fill "#ffffff" :fill-opacity "0.55" :stroke BOX-BORDER :stroke-width 1.5)
       (text 326 176 "flow" :font-size 22 :font-weight 600 :fill TEXT)
+      ;; which flow is drawn: the connection's, except while the click's own
+      ;; one-shot flow runs
+      (let [label (fn [s] (text 704 158 s :font-size 12 :font-family MONO :fill ACCENT-TEXT))
+            [click-t0 click-t1] [(first (:t (nth *steps* 2))) (second (:t (nth *steps* 3)))]]
+        (flip click-t0
+              (label "the connection's flow")
+              (flip click-t1 (label "this click's own flow") (label "the connection's flow"))))
       (proc-box controller2 "controller" "live.live-counter-controller")
       (code-block [[250 :inc ["(defn- " ["increment" kw-c] " [ctx {" [":keys" kw-c] " [count]}]"]]
                    [270 :inc ["  (assoc-in ctx [" [":memory" kw-c] " " [":count" kw-c] "]"]]

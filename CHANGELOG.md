@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Upgrading from 0.3.x
+
+- **Move a connected component's clicks to `/ds/nds/…`.** A request on `/ds/nds-connect/…` now always opens a connection, whatever its method and event. A click POSTed there would open a stream of its own on the button, and that stream would replace the page's connection as the one `send-event!` reaches.
+- **Mount the connect handler once, on any method**, and drop the `:post` route:
+  ```clojure
+  ["/nds-connect"
+   ["/:component/:component-id/:event" {:handler ds/handler-connected-component-connect}]]
+  ```
+  `handler-connected-component-event` is deprecated. A 0.3 route map that still mounts it on `:post` resolves, but that route now opens a connection too.
+
+### Connected components
+
+- `/ds/nds-connect/…` has one job: opening a connection for `send-event!`. Every request there, on any method (`@get` or `@post`) and with any event, answers with an SSE stream, starts a new flow, runs its event through it, and registers stream and flow under (component-id, user), replacing and stopping whatever was there. `send-event!` runs server events through that flow, one after the other.
+- Browser events don't go through a connection's flow any more: nothing is kept between events, so a one-shot flow renders the same. The POST-into-the-flow path of 0.3.0 is gone, and with it the observer's `:nds-connect-event` route.
+- Behaviour that does not change, now written down in [Connected components](docs/connected-components.md#the-reconnect-watchdog): a reconnect is a new connection and a new flow; server events sent while a stream is down are dropped, not queued; there is one connection per (component-id, user), not per tab.
+- Docstrings and docs no longer say a connected flow holds the ctx (it has kept nothing between events since 0.3.0).
+
+### Examples and template
+
+- The live counter's and the countdown's clicks are one-shot POSTs to `/ds/nds/…`; the examples app and the template mount nds-connect once, on any method. Both work on 0.3.2 as they are, so the template keeps its pin.
+- The home page mounts a child in a wrapper (`#<cid>-mount`) around `#<cid>`, and a connected child's mount POSTs its INIT and carries `data-on:ds-reconnect`, so the reconnect watchdog re-opens a dropped connection. The marker cannot sit on `#<cid>` itself: the render's morph drops attributes it does not produce ([Gotchas](docs/gotchas.md)). The watchdog example in [Connected components](docs/connected-components.md#the-reconnect-watchdog) had that mistake; it now uses a wrapper.
+- README animation: the click on the live counter runs in a flow of its own; the REPL's `send-event!` goes through the connection's flow.
+
 ## 0.3.2 — 2026-11-24
 
 - A deps-new template, `taia/app`. `clojure -Tnew create :template io.github.danbunea/taia.ds%template%taia/app :name acme/shop` generates a Polylith workspace with async Jetty, reitit, `bb dev` with an nREPL, RCF tests, `poly check`, an uberjar (`bb uberjar`), and the counter and live counter ready to edit. See `docs/new-project.md`. `bb template-test` generates a project and runs its checks. The generated project also has inline RCF tests for each action, machine and render fn, and Playwright specs for both components under the console guard (`bb e2e-test`).

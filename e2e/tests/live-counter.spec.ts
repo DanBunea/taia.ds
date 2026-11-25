@@ -2,11 +2,11 @@ import { test, expect } from '@playwright/test';
 import { collectConsoleErrors } from './helpers/console-guard';
 
 // A connected component with two ways in. The count is the tab's (its
-// :memory, round-tripped through data-signals); a click POSTs to the
-// nds-connect path and runs through the flow the stream opened. (The other
+// :memory, round-tripped through data-signals); a click is a one-shot POST
+// to /ds/nds/, and the nds-connect stream stays open for server events. (The other
 // way in, a server event — send-event!, e.g. from the REPL — is covered by block 2 of
 // examples_test.clj.)
-test('live counter: clicks go through the connected flow; the count is the tab\'s', async ({ page }) => {
+test('live counter: one-shot clicks next to an open stream; the count is the tab\'s', async ({ page }) => {
   const errors = collectConsoleErrors(page);
 
   await page.goto('/ds/nds/home.home/home/init?example=live-counter&user=alice');
@@ -45,4 +45,31 @@ test('live counter: two users count independently', async ({ browser }) => {
   expect(bobErrors(), 'bob console').toEqual([]);
   await alice.context().close();
   await bob.context().close();
+});
+
+// The reconnect watchdog (sse-reconnect.js) re-dispatches ds-reconnect on the
+// element that opened the connection. The marker sits on a wrapper: on #live1
+// itself the first render's morph would drop it. A reconnect is a new
+// connection whose INIT starts from the tab's signals, so the count stays.
+test('live counter: ds-reconnect on the mount re-opens the connection; the count survives', async ({ page }) => {
+  const errors = collectConsoleErrors(page);
+
+  await page.goto('/ds/nds/home.home/home/init?example=live-counter&user=carol');
+  await expect(page.getByTestId('count')).toHaveText('0');
+  await expect(page.locator('#live1-mount')).toHaveAttribute('data-on:ds-reconnect', /nds-connect/);
+
+  await page.getByTestId('inc').click();
+  await expect(page.getByTestId('count')).toHaveText('1');
+
+  const reopened = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().includes('/ds/nds-connect/live.live-counter/live1/init'),
+  );
+  await page.locator('#live1-mount').dispatchEvent('ds-reconnect');
+  await reopened;
+  await expect(page.getByTestId('count')).toHaveText('1');
+
+  await page.getByTestId('inc').click();
+  await expect(page.getByTestId('count')).toHaveText('2');
+
+  expect(errors(), 'console').toEqual([]);
 });

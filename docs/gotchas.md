@@ -84,6 +84,13 @@ File uploads cannot go through the SSE pipeline. Post a bare `fetch` + `FormData
 route, then `.click()` a hidden *trampoline* element whose `data-on:click` expression resets the
 signal and `@post`s the follow-up event. Check the target state actually handles that event.
 
+## A morph drops the attributes the render does not produce
+
+Datastar morphs an element by id and syncs its attributes to the new markup: anything the render
+fn does not emit is removed, on the same DOM node. A `data-on:ds-reconnect` (or any marker) put
+on a component's root from outside — the mount element sharing the component's id — is gone
+after the first render, silently. Put such markers on a wrapper with another id.
+
 ## The first request for a component pays the namespace load, on the request thread
 
 Measured at 3.7–6.1 s per component tree in a large app with RCF enabled. It looks intermittent

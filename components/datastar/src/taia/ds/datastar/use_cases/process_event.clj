@@ -229,7 +229,7 @@
 ;;; Tests — END TO END: real flows, fixture components. Every piece is tested
 ;;; on its own (above, and in process-event.controller / .view / domain);
 ;;; these check only the wiring of the procs: an event goes in and its render
-;;; comes out, an error crosses them, a connected flow holds its ctx.
+;;; comes out, an error crosses them, a connected flow carries nothing over.
 
 (tests
  (def ^:private counter-machine

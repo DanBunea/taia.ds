@@ -30,7 +30,7 @@
     :summary "An invoke calling a public API (Open-Meteo), a lazy-loading skeleton, `data-indicator` while a request is in flight, the error path."
     :doc "06-weather.md"}
    {:example "countdown" :title "7 · Countdown" :component "live.countdown" :cid "countdown1" :connected? true
-    :summary "A connected component's flow holds its state; the server drives it with `send-event!`, and clicks POST through the same flow."
+    :summary "A connected component the server drives with `send-event!` (each TICK carries the value to show); clicks run through the same flow."
     :doc "07-countdown.md"}])
 
 (defn find-example [name]

@@ -2,7 +2,7 @@
   "State machine for example 2. The count is the tab's: it lives in `:memory`
    and round-trips through the tab's signals. Nothing is kept on the server.
 
-   * A click POSTs to the nds-connect path with the tab's signals, so
+   * A click is a one-shot POST to /ds/nds/ with the tab's signals, so
      INCREMENT starts from the count in its `:memory`.
    * A server event (`send-event!`, e.g. from the REPL) has no request and
      no signals, so it brings the count as its params, and INCREMENT starts
