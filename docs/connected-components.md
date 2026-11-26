@@ -136,6 +136,13 @@ What a reconnect means on the server:
   goes to the dead stream. Send each server event with everything it needs as params (the countdown's
   `{:remaining n}`), so the next one sets the page right; the reconnect's request re-renders from the
   tab's own signals.
+- **A client too slow for its write queue gets its stream closed.** A user's writes wait in one
+  queue of `user-write-buffer` (1024) writes. A healthy client drains a burst of pushes in
+  milliseconds, so only a dead or stalled one fills it; then the write is dropped, the entry
+  removed and the stream closed, because a stream that lost a write is out of step with the
+  server. Its fetch ends, and the `data-on:ds-reconnect` marker turns that into a reconnect whose
+  request re-renders from the server's state. Without the marker nothing reopens it: RC8 does not
+  reopen a clean close.
 - **One stream per `[component-id user-id]`, not per tab.** Two tabs of the same user on the
   same component-id share the slot: the last connection opened wins, and pushes go to that tab
   only.

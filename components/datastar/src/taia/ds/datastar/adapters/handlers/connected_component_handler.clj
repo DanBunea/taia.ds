@@ -76,6 +76,13 @@
 ;; {user-id {:chan channel :thread Thread}}
 (def !user-chans (atom {}))
 
+(def user-write-buffer
+  "How many writes may wait for one user. One burst of pushes — a streamed
+   answer patches once per token, a list row's render several times — reaches
+   100+ writes in a few ms. A healthy client drains such a burst in
+   milliseconds; only a dead one fills this."
+  1024)
+
 (defn- start-user-consumer!
   "Starts a virtual thread that drains a per-user write channel.
    Each message is a (fn [] ...) thunk that performs blocking SSE I/O."
@@ -111,7 +118,7 @@
   "Returns the channel for a user-id, creating one (with its consumer thread) if needed."
   [user-id]
   (or (get-in @!user-chans [user-id :chan])
-      (let [ch (chan 100)
+      (let [ch (chan user-write-buffer)
             updated (swap! !user-chans
                            (fn [m]
                              (if (contains? m user-id)
@@ -223,6 +230,44 @@
    (spy/not-called? stop-flow-of!) := true)
  (reset! !connections {}))
 
+(defn- close-stale-stream!
+  "A stream that lost a write is out of step with the server: removes its
+   registry entry (if still current, stopping its flow) and closes it, so the
+   client sees its fetch end and reconnects instead of sitting on an open,
+   silent stream. The close happens even when a newer stream already took the
+   entry over — that stream lost the write either way; the identity guard
+   keeps the newer entry. A close that throws (socket already gone) is
+   swallowed: the entry is removed regardless."
+  [component-id user-id sse-gen]
+  (remove-connection-if-current! component-id user-id sse-gen)
+  (try
+    (d*/close-sse! sse-gen)
+    (catch Throwable e
+      (log/trace ::stale-stream-close-failed
+                 [:component-id component-id :user-id user-id :error (.getMessage e)]
+                 nil))))
+
+(tests
+ "close-stale-stream!: the entry is removed (identity-guarded) and the stream closed"
+ (with-redefs [remove-connection-if-current! (spy/spy (constantly true))
+               d*/close-sse!                 (spy/spy)]
+   (close-stale-stream! "cid-1" "u1" ::sse-1)
+   (spy/called-once-with? remove-connection-if-current! "cid-1" "u1" ::sse-1) := true
+   (spy/called-once-with? d*/close-sse! ::sse-1) := true)
+
+ "close-stale-stream!: an entry that is no longer current → the stale stream is
+  still closed"
+ (with-redefs [remove-connection-if-current! (spy/spy (constantly false))
+               d*/close-sse!                 (spy/spy)]
+   (close-stale-stream! "cid-1" "u1" ::sse-old)
+   (spy/called-once-with? d*/close-sse! ::sse-old) := true)
+
+ "close-stale-stream!: a close that throws is swallowed, the entry still removed"
+ (with-redefs [remove-connection-if-current! (spy/spy (constantly true))
+               d*/close-sse!                 (spy/spy (fn [_] (throw (ex-info "Broken pipe" {}))))]
+   (close-stale-stream! "cid-1" "u1" ::sse-1) := nil
+   (spy/called-once-with? remove-connection-if-current! "cid-1" "u1" ::sse-1) := true))
+
 (def slow-write-threshold-ms
   "A context-less write (heartbeat) slower than this, or one that waited longer
    than this in the queue, is reported as its own `::sse-write-slow` span so it
@@ -302,49 +347,77 @@
    := true))
 
 (defn- enqueue-write!
-  "Enqueues a write thunk onto a user's channel. If the buffer is full,
-   the write is dropped and sse-gen's connection is considered stale."
+  "Enqueues a write thunk onto a user's channel (`user-write-buffer` deep).
+   If it is full, the write is dropped and sse-gen's stream is closed as stale
+   (`close-stale-stream!`), so the client reconnects and re-renders instead of
+   waiting on a stream that will never get the rest."
   [component-id user-id sse-gen write-fn]
   (when-let [ch (get-in @!user-chans [user-id :chan])]
     (when-not (offer! ch (traced-write component-id user-id write-fn))
       (log/trace ::user-write-queue-full
                  [:component-id component-id :user-id user-id]
                  nil)
-      (remove-connection-if-current! component-id user-id sse-gen))))
+      (close-stale-stream! component-id user-id sse-gen))))
 
 (tests
  "enqueue-write!: the write, traced, goes onto the user's channel"
  (def ^:private write-thunk (fn [] :written))
  (def ^:private roomy-ch (chan 1))
  (reset! !user-chans {"u1" {:chan roomy-ch}})
- (with-redefs [traced-write                  (spy/spy (constantly ::traced-write))
-               remove-connection-if-current! (spy/spy)]
+ (with-redefs [traced-write        (spy/spy (constantly ::traced-write))
+               close-stale-stream! (spy/spy)]
    (enqueue-write! "cid-1" "u1" ::sse-1 write-thunk) := nil
    (spy/called-once-with? traced-write "cid-1" "u1" write-thunk) := true
-   (spy/not-called? remove-connection-if-current!) := true)
+   (spy/not-called? close-stale-stream!) := true)
  (clojure.core.async/poll! roomy-ch) := ::traced-write
  (reset! !user-chans {})
 
- "enqueue-write!: the user's channel is full → the write is dropped and
-  sse-gen's connection removed as stale"
+ "enqueue-write!: the user's channel is full → the write is dropped, and
+  sse-gen's connection removed and its stream closed as stale"
  (def ^:private full-ch (chan 1))
  (put! full-ch ::earlier-write)
  (reset! !user-chans {"u1" {:chan full-ch}})
- (with-redefs [traced-write                  (spy/spy (constantly ::traced-write))
-               remove-connection-if-current! (spy/spy (constantly true))]
-   (enqueue-write! "cid-1" "u1" ::sse-1 (fn [] :written)) := true
-   (spy/called-once-with? remove-connection-if-current! "cid-1" "u1" ::sse-1) := true)
+ (reset! !connections {"cid-1" {"u1" {:sse-gen ::sse-1 :flow nil}}})
+ (with-redefs [traced-write  (spy/spy (constantly ::traced-write))
+               d*/close-sse! (spy/spy)]
+   (enqueue-write! "cid-1" "u1" ::sse-1 (fn [] :written))
+   @!connections := {"cid-1" {}}
+   (spy/calls d*/close-sse!) := [[::sse-1]])
  (<!! full-ch) := ::earlier-write
  (clojure.core.async/poll! full-ch) := nil
  (reset! !user-chans {})
+ (reset! !connections {})
+
+ "enqueue-write!: a burst of 300 writes fits a user-write-buffer channel with no
+  consumer draining it → nothing is closed, the entry stays registered"
+ (reset! !user-chans {"u1" {:chan (chan user-write-buffer)}})
+ (reset! !connections {"cid-1" {"u1" {:sse-gen ::sse-1 :flow nil}}})
+ (with-redefs [d*/close-sse! (spy/spy)]
+   (dotimes [_ 300] (enqueue-write! "cid-1" "u1" ::sse-1 (fn [] :written)))
+   (spy/not-called? d*/close-sse!) := true
+   @!connections := {"cid-1" {"u1" {:sse-gen ::sse-1 :flow nil}}})
+ (reset! !user-chans {})
+ (reset! !connections {})
+
+ "enqueue-write!: a full channel whose stream close throws → enqueue-write!
+  still returns, and the entry is removed"
+ (def ^:private full-ch-2 (chan 1))
+ (put! full-ch-2 ::earlier-write)
+ (reset! !user-chans {"u1" {:chan full-ch-2}})
+ (reset! !connections {"cid-1" {"u1" {:sse-gen ::sse-1 :flow nil}}})
+ (with-redefs [d*/close-sse! (spy/spy (fn [_] (throw (ex-info "Broken pipe" {}))))]
+   (enqueue-write! "cid-1" "u1" ::sse-1 (fn [] :written)) := nil
+   @!connections := {"cid-1" {}})
+ (reset! !user-chans {})
+ (reset! !connections {})
 
  "enqueue-write!: no channel for the user → nothing is enqueued"
  (reset! !user-chans {})
- (with-redefs [traced-write                  (spy/spy)
-               remove-connection-if-current! (spy/spy)]
+ (with-redefs [traced-write        (spy/spy)
+               close-stale-stream! (spy/spy)]
    (enqueue-write! "cid-1" "u1" ::sse-1 (fn [] :written)) := nil
    (spy/not-called? traced-write) := true
-   (spy/not-called? remove-connection-if-current!) := true))
+   (spy/not-called? close-stale-stream!) := true))
 
 (defn register-connection!
   "Registers sse-gen (and its component flow, when given) under

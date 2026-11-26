@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.1 — unreleased
+
+- Fix: a full per-user write queue closes the stream instead of only unregistering it. Before, the
+  entry was removed but the socket stayed open, so every later write for it (heartbeats included)
+  was dropped and the browser sat on an open, silent stream: the end of a burst (a final render,
+  a `data-init` that moves the machine on) never arrived. Now the stream is closed, its fetch ends,
+  and an element carrying `data-on:ds-reconnect` reconnects and re-renders. See
+  [Connected components](docs/connected-components.md#the-reconnect-watchdog).
+- The queue holds 1024 writes (`user-write-buffer`, was 100): one burst of pushes reaches 100+
+  writes in a few ms, which overflowed 100 even for a healthy client.
+
 ## 0.4.0 — 2026-11-25
 
 ### Upgrading from 0.3.x

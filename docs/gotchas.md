@@ -114,6 +114,14 @@ See [Connected components](connected-components.md#the-reconnect-watchdog). Also
 an *old* stream must not evict a reconnected one — the registry removal is identity-guarded for
 that reason. Keep it that way if you touch it.
 
+## A UI that never gets the end of a burst
+
+If a connected component stops mid-update (a spinner that never ends, a reply that never
+finishes) while the server finished long ago, look for `::user-write-queue-full` in the traces: a
+user's write queue overflowed and the rest of the burst was dropped. Since 0.4.1 the queue holds
+1024 writes and a full one closes the stream, so a client with `data-on:ds-reconnect` reconnects
+and re-renders; one without that marker is left with a closed stream until a reload.
+
 ## Multipart, gzip and proxies
 
 Jetty 12's GzipHandler excludes `text/event-stream` by default (not a suspect). Proxies may buffer
