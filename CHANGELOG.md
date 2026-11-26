@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.1 — unreleased
+## 0.4.1 — 2026-11-26
 
 - Fix: a full per-user write queue closes the stream instead of only unregistering it. Before, the
   entry was removed but the socket stayed open, so every later write for it (heartbeats included)

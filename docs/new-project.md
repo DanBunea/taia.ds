@@ -36,7 +36,7 @@ The template lives in the [`template/`](../template) folder of the taia.ds repos
 
 ```shell
 # pin a release (the tag pins the template and the taia.ds version it depends on)
-clojure -Tnew create :template io.github.danbunea/taia.ds%template%taia/app#v0.4.0 :name acme/shop
+clojure -Tnew create :template io.github.danbunea/taia.ds%template%taia/app#v0.4.1 :name acme/shop
 
 # without installing the tool
 clojure -Sdeps '{:deps {io.github.seancorfield/deps-new {:git/tag "v0.17.0" :git/sha "657fca6"}}}' \
